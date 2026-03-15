@@ -1,0 +1,196 @@
+{
+  "name": "E03S02 — Magic Link Token Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sendjob-magic-link",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Trigger: Job Assigned Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "sendjob-magic-link",
+      "notes": "Called by E02S02 (SMS assignment) after jobs.status is set to Assigned.\nExpects POST body: { tech_id: '<uuid>' }\nFor E02S02 integration: replace this webhook trigger with the downstream node\nsequence appended directly to the E02S02 workflow after the job PATCH step."
+    },
+    {
+      "parameters": {
+        "jsCode": "// E03S02 — AC1: Generate cryptographically random UUID token\n// Scoped per-tech (not per-job) — one active token per tech at a time (AC3)\nconst techId = $input.item.json.tech_id || $input.item.json.body?.tech_id;\n\nif (!techId) {\n  throw new Error('tech_id is required — cannot generate magic link token without a tech_id');\n}\n\n// crypto.randomUUID() is available in Node.js 14.17+ (n8n runs Node 18+)\nconst token = require('crypto').randomUUID();\n\nreturn [{ json: { tech_id: techId, token: token } }];"
+      },
+      "id": "node-generate-token",
+      "name": "Generate Magic Link Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "notes": "AC1: Uses crypto.randomUUID() — cryptographically secure UUID.\nAC3: Token is per-tech, not per-job. Any previous token is overwritten by the PATCH.\nOutput: { tech_id: '<uuid>', token: '<uuid>' }"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/techs?id=eq.{{ $('Generate Magic Link Token').item.json.tech_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtb3hwcHV4cndsYWJxemZ6dmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0ODU2OTgsImV4cCI6MjA4NjA2MTY5OH0.Rk4Guy1nBDkUohg6qOM25T_FCahvcSaa4y-b9ilqWUQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtb3hwcHV4cndsYWJxemZ6dmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0ODU2OTgsImV4cCI6MjA4NjA2MTY5OH0.Rk4Guy1nBDkUohg6qOM25T_FCahvcSaa4y-b9ilqWUQ"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"magic_link_token\": \"{{ $('Generate Magic Link Token').item.json.token }}\",\n  \"token_issued_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {
+          "allowUnauthorizedCerts": false
+        }
+      },
+      "id": "node-patch-techs",
+      "name": "PATCH techs — Store Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "continueOnFail": true,
+      "notes": "AC2: PATCHes techs.magic_link_token and techs.token_issued_at.\nAC3: ?id=eq.[tech_id] always overwrites the existing token row — no duplicates.\ncontinueOnFail: true — PATCH failure must not halt the workflow or roll back the job assignment (AC5).\n\nIMPORTANT: Replace 'SUPABASE_SERVICE_ROLE_KEY_OR_ANON_KEY' with your actual key.\nUse the service_role key here (not anon) so the PATCH bypasses RLS. Alternatively,\nensure the anon role has UPDATE access on techs table (verify in Supabase → Auth → Policies).\n\nREFERENCE PATTERN (n8n 2.x): $('Generate Magic Link Token').item.json.tech_id\nNOT $json.tech_id — upstream node data must be referenced by node name."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('PATCH techs — Store Token').item.json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-check-patch",
+      "name": "Token PATCH Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 300],
+      "notes": "AC5: Checks whether the PATCH returned a valid row (return=representation).\nTrue branch (PATCH succeeded) → workflow ends cleanly.\nFalse branch (PATCH failed or returned no row) → Log Token Error node.\nEither way: the upstream job assignment is NEVER rolled back."
+    },
+    {
+      "parameters": {
+        "jsCode": "// E03S02 — AC5: Log token PATCH failure — non-fatal\n// The job is already assigned (jobs.status = Assigned, jobs.tech_id = set).\n// This failure only means the tech SMS (E03S03) will not have a valid token.\n// Downstream: E03S03 should check for a valid token before sending SMS.\n\nconst techId = $('Generate Magic Link Token').item.json.tech_id;\nconst patchResponse = $('PATCH techs — Store Token').item.json;\n\nconsole.error('[SendJob] E03S02: magic_link_token PATCH failed for tech_id=' + techId);\nconsole.error('[SendJob] PATCH response:', JSON.stringify(patchResponse));\n\nreturn [{\n  json: {\n    error: 'magic_link_token PATCH failed',\n    tech_id: techId,\n    timestamp: new Date().toISOString(),\n    patch_response: patchResponse\n  }\n}];"
+      },
+      "id": "node-log-error",
+      "name": "Log Token Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 420],
+      "notes": "AC5: Logs the PATCH failure for debugging. Workflow ends here.\nThe job assignment (jobs table) is NOT reverted — assignment stands.\nThis node executes only on the false branch of 'Token PATCH Succeeded?'"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "node-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1160, 300],
+      "notes": "Webhook response — sends 200 OK back to the caller.\nFor E02S02 integration (no webhook trigger): remove this node; the flow ends at 'Token PATCH Succeeded?'"
+    }
+  ],
+  "connections": {
+    "Trigger: Job Assigned Webhook": {
+      "main": [
+        [
+          {
+            "node": "Generate Magic Link Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Magic Link Token": {
+      "main": [
+        [
+          {
+            "node": "PATCH techs — Store Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PATCH techs — Store Token": {
+      "main": [
+        [
+          {
+            "node": "Token PATCH Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token PATCH Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Token Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "sprint-3" },
+    { "name": "E03S02" },
+    { "name": "tech-flow" }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-15T00:00:00.000Z",
+  "versionId": "e03s02-v1",
+  "_comment": "INTEGRATION NOTES — READ BEFORE IMPORTING\n\nThis workflow has TWO integration modes:\n\nMODE 1: Standalone webhook (current setup)\n  - Import as-is into n8n\n  - Webhook path: POST https://nexusfound.cloud/webhook/sendjob-magic-link\n  - Body: { 'tech_id': '<uuid>' }\n  - E02S02 (SMS assignment) must call this webhook after setting jobs.status=Assigned\n  - E02S07 (dashboard) handles token generation client-side (see dispatcher-dashboard/index.html)\n\nMODE 2: Inline node sequence (recommended for E02S02)\n  - Copy nodes 'Generate Magic Link Token', 'PATCH techs — Store Token',\n    'Token PATCH Succeeded?', and 'Log Token Error' into the E02S02 workflow\n  - Connect 'PATCH jobs (Assign)' → 'Generate Magic Link Token'\n  - Remove the 'Trigger: Job Assigned Webhook' and 'Respond to Webhook' nodes\n  - The tech_id reference in Generate Magic Link Token changes to:\n    $('PATCH jobs (Assign)').item.json.tech_id\n    (use the actual node name from E02S02 workflow that writes tech_id to jobs)\n\nSUPABASE KEY:\n  - Replace 'SUPABASE_SERVICE_ROLE_KEY_OR_ANON_KEY' in the PATCH node with the real key\n  - Preferred: service_role key (bypasses RLS) — store in n8n Credentials as env variable\n  - Alternative: anon key — requires UPDATE policy on techs table for anon role\n    (Supabase → Auth → Policies → techs table → check anon UPDATE policy)\n\nFIELD REFERENCES (n8n 2.x pattern — critical):\n  - ALWAYS: $('Node Name').item.json.fieldname\n  - NEVER: $json.fieldname for upstream node data\n  - Code node output: return [{ json: { ... } }]\n  - Expression mode: toggle orange '=' icon per field\n"
+}

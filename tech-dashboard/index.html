@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0A1628" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>SendJob — Tech Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Design Tokens (Playbook Design System) ────────────────────────── */
+    :root {
+      --navy:        #0A1628;
+      --navy-mid:    #0F2040;
+      --navy-light:  #162A4A;
+      --card:        rgba(15, 32, 64, 0.9);
+      --border:      rgba(0, 200, 255, 0.2);
+      --border-strong: rgba(0, 200, 255, 0.4);
+      --text:        #E8F4FD;
+      --text-muted:  #7BA7C4;
+      --urgent:      #FF4444;
+      --urgent-glow: rgba(255, 68, 68, 0.15);
+      --warn:        #FFB800;
+      --success:     #00D68F;
+      --ice:         #00C8FF;
+      --ice-dark:    #0099CC;
+      --ice-glow:    rgba(0, 200, 255, 0.15);
+      --tap-min:     52px;
+      --radius-card: 16px;
+      --pad-page:    16px;
+    }
+
+    /* ─── Reset & Base ──────────────────────────────────────────────────── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+      overflow-x: hidden;
+    }
+
+    body {
+      font-family: 'Barlow', sans-serif;
+      background: var(--navy);
+      color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;
+      line-height: 1.5;
+      overflow-x: hidden;
+      padding-bottom: env(safe-area-inset-bottom, 24px);
+    }
+
+    /* ─── Nav ───────────────────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px var(--pad-page);
+      background: rgba(10, 22, 40, 0.97);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-logo {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--ice), var(--ice-dark));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .nav-name {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      line-height: 1;
+    }
+
+    .nav-name span {
+      color: var(--ice);
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ─── Status Pill ───────────────────────────────────────────────────── */
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--navy-mid);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+
+    .status-dot.loading {
+      background: var(--ice);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .status-dot.loaded { background: var(--success); }
+    .status-dot.error  { background: var(--urgent); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .status-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Main Content ──────────────────────────────────────────────────── */
+    .main-content {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 28px var(--pad-page) 48px;
+    }
+
+    @media (min-width: 480px) {
+      :root { --pad-page: 24px; }
+    }
+
+    /* ─── Section Label ─────────────────────────────────────────────────── */
+    .section-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ice);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ─── Tech Greeting Banner ──────────────────────────────────────────── */
+    .tech-banner {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .tech-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--ice), var(--ice-dark));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .tech-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tech-greeting {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+      letter-spacing: 0.3px;
+    }
+
+    .tech-name {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ─── Job Cards ─────────────────────────────────────────────────────── */
+    .jobs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .job-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+    }
+
+    .job-card-header {
+      background: var(--navy-mid);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .job-id {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--ice);
+      letter-spacing: 1px;
+    }
+
+    /* ─── Status Badges ─────────────────────────────────────────────────── */
+    .status-badge {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 20px;
+      flex-shrink: 0;
+    }
+
+    .status-badge.status-assigned {
+      background: var(--ice-glow);
+      color: var(--ice);
+      border: 1px solid var(--border-strong);
+    }
+
+    .status-badge.status-en-route {
+      background: rgba(255, 184, 0, 0.15);
+      color: var(--warn);
+      border: 1px solid rgba(255, 184, 0, 0.4);
+    }
+
+    .status-badge.status-on-site {
+      background: rgba(0, 214, 143, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(0, 214, 143, 0.4);
+    }
+
+    /* ─── Job Card Body ─────────────────────────────────────────────────── */
+    .job-card-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .job-field {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .job-field-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .job-field-value {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      word-break: break-word;
+      line-height: 1.4;
+    }
+
+    .job-field-value.address {
+      color: var(--ice);
+      font-weight: 600;
+    }
+
+    /* ─── Empty State ───────────────────────────────────────────────────── */
+    .empty-state {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 48px 24px;
+      text-align: center;
+    }
+
+    .empty-icon {
+      font-size: 40px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .empty-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .empty-sub {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 300;
+    }
+
+    /* ─── Error State ───────────────────────────────────────────────────── */
+    .error-state {
+      display: none;
+      background: rgba(255, 68, 68, 0.08);
+      border: 1px solid rgba(255, 68, 68, 0.3);
+      border-radius: var(--radius-card);
+      padding: 40px 24px;
+      text-align: center;
+      margin-top: 32px;
+    }
+
+    .error-icon {
+      font-size: 40px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .error-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--urgent);
+      margin-bottom: 10px;
+    }
+
+    .error-sub {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 300;
+      line-height: 1.6;
+    }
+
+    /* ─── Loading Overlay ───────────────────────────────────────────────── */
+    .loading-state {
+      text-align: center;
+      padding: 48px 24px;
+    }
+
+    .loading-spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--ice);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    /* ─── Job count badge ───────────────────────────────────────────────── */
+    .job-count-badge {
+      display: inline-block;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--ice-glow);
+      color: var(--ice);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2px 8px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ─── Navigation ──────────────────────────────────────────────────────── -->
+  <nav>
+    <div class="nav-brand">
+      <div class="nav-logo">⚡</div>
+      <div class="nav-name">SEND<span>JOB</span> TECH</div>
+    </div>
+    <div class="nav-right">
+      <div class="status-pill" id="status-pill">
+        <div class="status-dot loading" id="status-dot"></div>
+        <span class="status-label" id="status-label">LOADING</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─── Main Content ─────────────────────────────────────────────────────── -->
+  <div class="main-content">
+
+    <!-- Error state (token missing or invalid) -->
+    <div class="error-state" id="error-state">
+      <span class="error-icon">🔒</span>
+      <div class="error-title">Link Expired or Invalid</div>
+      <div class="error-sub">
+        This link has expired or is no longer valid.<br />
+        Text <strong>JOBS</strong> to your dispatch number to get a new one.
+      </div>
+    </div>
+
+    <!-- Dashboard content (hidden until token validated) -->
+    <div id="dashboard-content" style="display:none;">
+
+      <!-- Tech greeting -->
+      <div class="tech-banner" id="tech-banner">
+        <div class="tech-avatar">🔧</div>
+        <div class="tech-info">
+          <div class="tech-greeting">Good to see you,</div>
+          <div class="tech-name" id="tech-name-display">—</div>
+        </div>
+      </div>
+
+      <!-- Jobs section -->
+      <div class="section-label">
+        Active Jobs <span id="job-count-badge"></span>
+      </div>
+
+      <!-- Loading state -->
+      <div class="loading-state" id="loading-state">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">LOADING YOUR JOBS…</div>
+      </div>
+
+      <!-- Jobs list -->
+      <div class="jobs-list" id="jobs-list" style="display:none;"></div>
+
+      <!-- Empty state -->
+      <div class="empty-state" id="empty-state" style="display:none;">
+        <span class="empty-icon">✅</span>
+        <div class="empty-title">No active jobs right now.</div>
+        <div class="empty-sub">Check back after your next assignment.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    /*
+     * SendJob — Technician Dashboard
+     * Deployed to: techhub.sendjob.app (separate Netlify site from myhub.sendjob.app)
+     *
+     * Auth: token-in-URL (?token=) — no login screen.
+     * Token is validated against techs.magic_link_token in Supabase (anon REST).
+     *
+     * Story: E03S04
+     */
+
+    /* ── Supabase Config ──────────────────────────────────────────────────── */
+    const SUPABASE_URL = 'https://tmoxppuxrwlabqzfzvin.supabase.co';
+    // Replace with anon key from Supabase Dashboard → Project Settings → API → anon public
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtb3hwcHV4cndsYWJxemZ6dmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0ODU2OTgsImV4cCI6MjA4NjA2MTY5OH0.Rk4Guy1nBDkUohg6qOM25T_FCahvcSaa4y-b9ilqWUQ';
+
+    const HEADERS = {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+    };
+
+    /* ── DOM refs ──────────────────────────────────────────────────────────── */
+    const $statusDot   = document.getElementById('status-dot');
+    const $statusLabel = document.getElementById('status-label');
+    const $errorState  = document.getElementById('error-state');
+    const $dashboard   = document.getElementById('dashboard-content');
+    const $techName    = document.getElementById('tech-name-display');
+    const $loadingState = document.getElementById('loading-state');
+    const $jobsList    = document.getElementById('jobs-list');
+    const $emptyState  = document.getElementById('empty-state');
+    const $jobCountBadge = document.getElementById('job-count-badge');
+
+    /* ── Helpers ───────────────────────────────────────────────────────────── */
+    function setStatus(state, label) {
+      $statusDot.className = 'status-dot ' + state;
+      $statusLabel.textContent = label;
+    }
+
+    function showError() {
+      setStatus('error', 'ERROR');
+      $errorState.style.display = 'block';
+    }
+
+    function formatJobId(uuid) {
+      // Last 6 chars of UUID, uppercased
+      return (uuid || '').slice(-6).toUpperCase();
+    }
+
+    function getStatusClass(status) {
+      if (status === 'Assigned') return 'status-assigned';
+      if (status === 'En Route') return 'status-en-route';
+      if (status === 'On Site')  return 'status-on-site';
+      return 'status-assigned';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '—';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    /* ── Render job cards ──────────────────────────────────────────────────── */
+    function renderJobs(jobs) {
+      $loadingState.style.display = 'none';
+
+      if (!jobs || jobs.length === 0) {
+        // AC7: friendly empty state
+        $emptyState.style.display = 'block';
+        $jobCountBadge.innerHTML = '';
+        return;
+      }
+
+      // Show count badge
+      $jobCountBadge.innerHTML = '<span class="job-count-badge">' + jobs.length + '</span>';
+
+      jobs.forEach(function(job) {
+        const jobId       = formatJobId(job.id);
+        const statusClass = getStatusClass(job.status);
+
+        const card = document.createElement('div');
+        card.className = 'job-card';
+        card.innerHTML =
+          '<div class="job-card-header">' +
+            '<span class="job-id">#' + escapeHtml(jobId) + '</span>' +
+            '<span class="status-badge ' + statusClass + '">' + escapeHtml(job.status) + '</span>' +
+          '</div>' +
+          '<div class="job-card-body">' +
+            '<div class="job-field">' +
+              '<div class="job-field-label">Customer</div>' +
+              '<div class="job-field-value">' + escapeHtml(job.customer_name) + '</div>' +
+            '</div>' +
+            '<div class="job-field">' +
+              '<div class="job-field-label">Service Address</div>' +
+              '<div class="job-field-value address">' + escapeHtml(job.service_address) + '</div>' +
+            '</div>' +
+            '<div class="job-field">' +
+              '<div class="job-field-label">Service Type</div>' +
+              '<div class="job-field-value">' + escapeHtml(job.service_type) + '</div>' +
+            '</div>' +
+            '<div class="job-field">' +
+              '<div class="job-field-label">Issue</div>' +
+              '<div class="job-field-value">' + escapeHtml(job.issue_description) + '</div>' +
+            '</div>' +
+          '</div>';
+
+        $jobsList.appendChild(card);
+      });
+
+      $jobsList.style.display = 'flex';
+    }
+
+    /* ── Main init ─────────────────────────────────────────────────────────── */
+    (async function init() {
+      setStatus('loading', 'LOADING');
+
+      // AC1: Read ?token= from URL query string on load
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+
+      if (!token) {
+        // No token in URL — show error state immediately
+        showError();
+        return;
+      }
+
+      // AC2: Validate token against techs.magic_link_token
+      let tech;
+      try {
+        const res = await fetch(
+          SUPABASE_URL + '/rest/v1/techs'
+            + '?magic_link_token=eq.' + encodeURIComponent(token)
+            + '&select=id,name,client_id',
+          { headers: HEADERS }
+        );
+
+        if (!res.ok) {
+          showError();
+          return;
+        }
+
+        const techs = await res.json();
+
+        if (!Array.isArray(techs) || techs.length === 0) {
+          // AC2: No match found — redirect to error state
+          showError();
+          return;
+        }
+
+        tech = techs[0];
+      } catch (err) {
+        showError();
+        return;
+      }
+
+      // Token valid — show dashboard
+      $dashboard.style.display = 'block';
+      $techName.textContent = tech.name || 'Technician';
+
+      // AC3, AC5: Fetch active jobs for this tech, ordered by assigned_at ascending
+      try {
+        const jobsRes = await fetch(
+          SUPABASE_URL + '/rest/v1/jobs'
+            + '?tech_id=eq.' + encodeURIComponent(tech.id)
+            + '&status=in.(Assigned,En Route,On Site)'
+            + '&order=assigned_at.asc'
+            + '&select=id,customer_name,service_address,service_type,issue_description,status,assigned_at',
+          { headers: HEADERS }
+        );
+
+        if (!jobsRes.ok) {
+          // Jobs fetch failed — show empty state rather than hard error
+          $loadingState.style.display = 'none';
+          $emptyState.style.display = 'block';
+          setStatus('loaded', 'LOADED');
+          return;
+        }
+
+        const jobs = await jobsRes.json();
+
+        setStatus('loaded', 'LOADED');
+        renderJobs(jobs);
+
+      } catch (err) {
+        $loadingState.style.display = 'none';
+        $emptyState.style.display = 'block';
+        setStatus('error', 'ERROR');
+      }
+    })();
+  </script>
+</body>
+</html>

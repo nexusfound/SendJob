@@ -1,0 +1,306 @@
+{
+  "name": "E03S03 — Tech Notification SMS with Magic Link",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sendjob-tech-sms",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Trigger: Tech SMS Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "sendjob-tech-sms",
+      "notes": "Triggered after E03S02 stores the magic link token.\nExpects POST body: { tech_id, job_id, token, client_id } — all UUID strings.\n\nINTEGRATION: In the E03S02 workflow, add an HTTP Request node on the true branch\nof 'Token PATCH Succeeded?' that POSTs to:\n  POST https://nexusfound.cloud/webhook/sendjob-tech-sms\nBody: {\n  'tech_id': {{ $('Generate Magic Link Token').item.json.tech_id }},\n  'job_id': {{ $('Trigger: Job Assigned Webhook').item.json.body.job_id }},\n  'token': {{ $('Generate Magic Link Token').item.json.token }},\n  'client_id': {{ $('Trigger: Job Assigned Webhook').item.json.body.client_id }}\n}\n(Use actual E03S02 node names from your imported workflow.)"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?id=eq.{{ $('Trigger: Tech SMS Webhook').item.json.body.job_id }}&select=customer_name,customer_phone,service_address,issue_description,client_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-job",
+      "name": "GET Job Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "notes": "AC2: Fetches customer_name, customer_phone, service_address, issue_description, client_id from jobs table.\nFiltered by job_id from the webhook payload.\nSupabase HTTP Request pattern — NOT native Supabase node (DEC-003).\n\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER with your anon key from:\n  Supabase Dashboard → Project Settings → API → anon public\nRLS SELECT policy on jobs table must allow anon reads.\n\nReference: $('GET Job Details').item.json.customer_name"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/clients?id=eq.{{ $('Trigger: Tech SMS Webhook').item.json.body.client_id }}&select=business_name,twilio_number",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-client",
+      "name": "GET Client Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "notes": "AC5: Fetches business_name and twilio_number from clients table.\nbusiness_name is NEVER hardcoded — always pulled from Supabase (AC5).\ntwilio_number is the client's 10DLC Twilio number used as SMS 'from'.\n\nReference: $('GET Client Details').item.json.business_name"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/techs?id=eq.{{ $('Trigger: Tech SMS Webhook').item.json.body.tech_id }}&select=phone,contact_method,magic_link_token,name",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-tech",
+      "name": "GET Tech Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300],
+      "notes": "AC6: Fetches contact_method to determine SMS vs email path.\nAlso fetches phone (SMS 'to'), magic_link_token (confirmation), and name (for logging).\nRLS SELECT policy on techs table must allow anon reads.\n\nReference: $('GET Tech Details').item.json.contact_method"
+    },
+    {
+      "parameters": {
+        "jsCode": "// E03S03 — AC2, AC3, AC4: Build canonical tech notification SMS body\n// Assembles message using only data from upstream nodes — never hardcoded values\n\nconst businessName = $('GET Client Details').item.json.business_name;\nconst customerName = $('GET Job Details').item.json.customer_name;\nconst serviceAddress = $('GET Job Details').item.json.service_address;\nconst customerPhone = $('GET Job Details').item.json.customer_phone;\nconst issueDescription = $('GET Job Details').item.json.issue_description;\nconst token = $('Trigger: Tech SMS Webhook').item.json.body.token;\nconst techPhone = $('GET Tech Details').item.json.phone;\nconst contactMethod = $('GET Tech Details').item.json.contact_method;\nconst techName = $('GET Tech Details').item.json.name;\n\n// Validate required fields — fail loudly, not silently\nif (!businessName) throw new Error('[E03S03] Missing clients.business_name — cannot build SMS');\nif (!customerName) throw new Error('[E03S03] Missing jobs.customer_name — cannot build SMS');\nif (!serviceAddress) throw new Error('[E03S03] Missing jobs.service_address — cannot build SMS');\nif (!customerPhone) throw new Error('[E03S03] Missing jobs.customer_phone — cannot build SMS');\nif (!issueDescription) throw new Error('[E03S03] Missing jobs.issue_description — cannot build SMS');\nif (!token) throw new Error('[E03S03] Missing token from webhook payload — cannot build magic link');\nif (!techPhone) throw new Error('[E03S03] Missing techs.phone — cannot send SMS');\n\n// AC3: Magic link URL format — https://tech.sendjob.app?token=[token]\nconst magicLinkUrl = 'https://tech.sendjob.app?token=' + token;\n\n// AC4: Canonical SMS template from conventions.md\n// [Business Name] - New job assigned: [Customer], [Address], [Phone]. Issue: [Description]. View job: [URL]\nconst baseMessage = businessName + ' - New job assigned: ' + customerName + ', ' + serviceAddress + ', ' + customerPhone + '. Issue: ' + issueDescription + '. View job: ' + magicLinkUrl;\n\n// Opt-out language: append on every SMS to remain compliant (conservative approach)\n// Story notes: 'include opt-out on first SMS to a new contact'\n// Safe default: always include — Twilio A2P 10DLC compliance requires it on first contact\nconst smsBody = baseMessage + ' Reply STOP to unsubscribe.';\n\nreturn [{\n  json: {\n    smsBody: smsBody,\n    techPhone: techPhone,\n    contactMethod: contactMethod,\n    businessName: businessName,\n    techName: techName,\n    magicLinkUrl: magicLinkUrl\n  }\n}];"
+      },
+      "id": "node-build-sms",
+      "name": "Build SMS Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 300],
+      "notes": "AC2: Assembles all 6 required data points: business_name, customer_name, service_address, customer_phone, issue_description, magic_link_url.\nAC3: Magic link URL = 'https://tech.sendjob.app?token=[token]'\nAC4: Uses canonical template exactly as defined in conventions.md.\nAC5: business_name read from $('GET Client Details').item.json.business_name — never hardcoded.\nOpt-out: 'Reply STOP to unsubscribe.' appended per Twilio A2P 10DLC compliance requirements.\n\nIMPORTANT: No require('crypto') used — token is passed in from webhook payload (generated by E03S02).\nAll node references use $('Node Name').item.json.field pattern (n8n 2.x)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('GET Tech Details').item.json.contact_method }}",
+              "rightValue": "sms",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-contact-method",
+      "name": "Contact Method: SMS or Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1400, 300],
+      "notes": "AC6: Routes to SMS path (true) or email stub path (false) based on techs.contact_method.\nTrue: contact_method = 'sms' → Send Tech SMS node\nFalse: contact_method = 'email' (or any other value) → Log Email Stub node\n\nSMS is the primary path for Sprint 3. Email path is an acceptable stub per AC6."
+    },
+    {
+      "parameters": {
+        "from": "={{ $('GET Client Details').item.json.twilio_number }}",
+        "to": "={{ $('Build SMS Body').item.json.techPhone }}",
+        "message": "={{ $('Build SMS Body').item.json.smsBody }}"
+      },
+      "id": "node-send-sms",
+      "name": "Send Tech SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1640, 200],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credentials",
+          "name": "Twilio account"
+        }
+      },
+      "notes": "AC1, AC2, AC7: Sends the tech notification SMS via native n8n Twilio node.\nAC7: Uses native Twilio node — NOT HTTP Request (per conventions.md, DEC).\nfrom: clients.twilio_number (the client's 10DLC number)\nto: techs.phone (the assigned tech's phone — E.164 format)\nmessage: canonical SMS body assembled in 'Build SMS Body' node\n\nCREDENTIAL: Twilio (Account SID + Auth Token)\nConfigure in n8n: Settings → Credentials → New → Twilio → enter Account SID + Auth Token"
+    },
+    {
+      "parameters": {
+        "jsCode": "// E03S03 — AC6: Email path stub\n// The email notification path is acceptable as a stub for Sprint 3.\n// SMS is the primary delivery path. Email will be implemented in a future sprint.\n\nconst techName = $('Build SMS Body').item.json.techName;\nconst businessName = $('Build SMS Body').item.json.businessName;\nconst magicLinkUrl = $('Build SMS Body').item.json.magicLinkUrl;\nconst contactMethod = $('GET Tech Details').item.json.contact_method;\n\nconsole.log('[SendJob] E03S03: email contact_method detected for tech=' + techName + ' — email path not yet implemented (Sprint 3 stub)');\nconsole.log('[SendJob] E03S03: business=' + businessName + ' magicLink=' + magicLinkUrl);\n\n// Return stub result — workflow continues to respond to webhook\nreturn [{\n  json: {\n    stub: true,\n    contactMethod: contactMethod,\n    techName: techName,\n    note: 'Email path: stub — not yet implemented. Tech notification not sent. Implement in future sprint.'\n  }\n}];"
+      },
+      "id": "node-email-stub",
+      "name": "Log: Email Stub",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 420],
+      "notes": "AC6: Email stub — logs that tech has contact_method='email' and notification was not sent.\nThis is acceptable for Sprint 3 per AC6 ('Email path is acceptable as a stub').\nImplement actual Resend email in a future sprint.\nWorkflow does NOT error out — it continues to respond cleanly to the caller."
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "node-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1880, 300],
+      "notes": "Returns 200 OK to the E03S02 caller after SMS send (or email stub).\nBoth SMS and email stub paths merge into this node."
+    }
+  ],
+  "connections": {
+    "Trigger: Tech SMS Webhook": {
+      "main": [
+        [
+          {
+            "node": "GET Job Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Job Details": {
+      "main": [
+        [
+          {
+            "node": "GET Client Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Client Details": {
+      "main": [
+        [
+          {
+            "node": "GET Tech Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Tech Details": {
+      "main": [
+        [
+          {
+            "node": "Build SMS Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SMS Body": {
+      "main": [
+        [
+          {
+            "node": "Contact Method: SMS or Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Method: SMS or Email?": {
+      "main": [
+        [
+          {
+            "node": "Send Tech SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log: Email Stub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Tech SMS": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log: Email Stub": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "sprint-3" },
+    { "name": "E03S03" },
+    { "name": "tech-flow" }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-15T00:00:00.000Z",
+  "versionId": "e03s03-v1",
+  "_comment": "INTEGRATION NOTES — READ BEFORE IMPORTING\n\n== SUPABASE KEY ==\nReplace all 'SUPABASE_ANON_KEY_PLACEHOLDER' values with your actual anon key.\nLocation: Supabase Dashboard → Project Settings → API → 'anon public'\nRequired in: GET Job Details, GET Client Details, GET Tech Details (3 nodes)\n\nVerify RLS policies:\n  - jobs table: anon SELECT policy must exist\n  - clients table: anon SELECT policy must exist  \n  - techs table: anon SELECT policy must exist\nSee Supabase → Auth → Policies for each table.\n\n== TWILIO CREDENTIALS ==\nConfigure Twilio credentials in n8n:\n  n8n → Settings → Credentials → New → Twilio\n  Enter: Account SID + Auth Token from Twilio Console\nThe 'Send Tech SMS' node uses credential id 'twilio-credentials' — update this to match\nyour n8n credential ID after creation.\n\n== INTEGRATION WITH E03S02 ==\nThis workflow is triggered by E03S02 after the token is stored successfully.\nIn the E03S02 workflow, add an HTTP Request node on the TRUE branch of\n'Token PATCH Succeeded?' (before 'Respond to Webhook'):\n\n  Method: POST\n  URL: https://nexusfound.cloud/webhook/sendjob-tech-sms\n  Body (JSON):\n  {\n    \"tech_id\": \"{{ $('Generate Magic Link Token').item.json.tech_id }}\",\n    \"job_id\": \"{{ $('Trigger: Job Assigned Webhook').item.json.body.job_id }}\",\n    \"token\": \"{{ $('Generate Magic Link Token').item.json.token }}\",\n    \"client_id\": \"{{ $('Trigger: Job Assigned Webhook').item.json.body.client_id }}\"\n  }\n\nIMPORTANT: Use the actual node names from your imported E03S02 workflow.\nAll expression fields require the orange '=' toggle to be active in n8n.\n\n== FIELD REFERENCES (n8n 2.x — critical) ==\n  ALWAYS: $('Node Name').item.json.fieldname\n  NEVER:  $json.fieldname for upstream node data\n  Code node output: return [{ json: { ... } }]\n  Expression mode: toggle orange '=' icon per field\n\n== WEBHOOK PATH ==\n  POST https://nexusfound.cloud/webhook/sendjob-tech-sms\n\n== TEST PROCEDURE ==\n1. Import this workflow into n8n\n2. Replace SUPABASE_ANON_KEY_PLACEHOLDER in all 3 HTTP Request nodes\n3. Configure Twilio credentials (Account SID + Auth Token)\n4. Activate the workflow\n5. Send test POST to https://nexusfound.cloud/webhook/sendjob-tech-sms:\n   { \"tech_id\": \"<real_tech_uuid>\", \"job_id\": \"<real_job_uuid>\", \"token\": \"<test_token>\", \"client_id\": \"<real_client_uuid>\" }\n6. Verify SMS received on tech's phone with correct business name, job details, and magic link URL\n7. Test on actual mobile device — field techs read these on phones, not desktops\n"
+}
