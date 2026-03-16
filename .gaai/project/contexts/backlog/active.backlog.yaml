@@ -282,28 +282,9 @@ items:
   - id: E03S08
     epic: E03
     priority: high
-    status: in_progress
+    status: done
     started_at: "2026-03-16T12:48:10Z"
-    estimate_hrs: 1
-    artefact: contexts/artefacts/stories/E03S08.story.md
-    dependencies: [E03S04]
-    title: "Tech dashboard: expired/invalid token error page with friendly message"
-    notes: >
-      If token missing or not found in techs.magic_link_token — show error state.
-      Message: "This link has expired. Text JOBS to [number] to get a new one."
-      Same dark navy design — not a raw browser error. No partial dashboard visible.
-
-  - id: E03S09
-    epic: E03
-    priority: high
-    status: idea
-    estimate_hrs: ~
-    artefact: ~
-    dependencies: [E03S05]
-    title: "Tech dashboard: Job Complete button — marks job complete and sends payment link SMS to customer"
-    notes: >
-      Complete button shown when status = On Site (final step in tech status flow).
-      Tapping Complete: PATCH jobs.status = Complete, then trigger payment SMS to customer.
-      Payment link service TBD (Stripe, Square, etc.) — clarify in Discovery.
-      Confirm: does tech see a confirmation before sending? Does dispatcher get notified?
-      Same tap-protection pattern as En Route / On Site buttons (disable on tap).
+    completed_at: "2026-03-16T12:54:17Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E03S08 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
