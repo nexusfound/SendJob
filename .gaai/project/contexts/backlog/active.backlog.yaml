@@ -11,8 +11,12 @@ items:
     epic: E02
     title: "Twilio inbound webhook: receive dispatcher SMS reply, route to N8N"
     priority: high
-    status: in_progress
+    status: done
     started_at: "2026-03-16T20:28:17Z"
+    completed_at: "2026-03-16T20:39:05Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S01 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 2
     artefact: contexts/artefacts/stories/E02S01.story.md
     dependencies: []
