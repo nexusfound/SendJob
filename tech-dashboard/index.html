@@ -517,13 +517,21 @@
   <!-- ─── Main Content ─────────────────────────────────────────────────────── -->
   <div class="main-content">
 
-    <!-- Error state (token missing or invalid) -->
-    <div class="error-state" id="error-state">
+    <!-- Error state: token missing or not found (AC1, AC2, AC3) -->
+    <div class="error-state" id="error-token">
       <span class="error-icon">🔒</span>
-      <div class="error-title">Link Expired or Invalid</div>
+      <div class="error-title">Link Expired</div>
       <div class="error-sub">
-        This link has expired or is no longer valid.<br />
-        Text <strong>JOBS</strong> to your dispatch number to get a new one.
+        This link has expired. Text <strong>JOBS</strong> to your dispatcher to get a new one.
+      </div>
+    </div>
+
+    <!-- Error state: network failure during token lookup (AC6) -->
+    <div class="error-state" id="error-network">
+      <span class="error-icon">⚠️</span>
+      <div class="error-title">Something Went Wrong</div>
+      <div class="error-sub">
+        Something went wrong. Please try again or contact your dispatcher.
       </div>
     </div>
 
@@ -571,7 +579,7 @@
      * Auth: token-in-URL (?token=) — no login screen.
      * Token is validated against techs.magic_link_token in Supabase (anon REST).
      *
-     * Stories: E03S04 (dashboard), E03S05 (En Route / On Site action buttons)
+     * Stories: E03S04 (dashboard), E03S05 (En Route / On Site action buttons), E03S08 (error page)
      */
 
     /* ── Supabase Config ──────────────────────────────────────────────────── */
@@ -585,10 +593,11 @@
     };
 
     /* ── DOM refs ──────────────────────────────────────────────────────────── */
-    const $statusDot   = document.getElementById('status-dot');
-    const $statusLabel = document.getElementById('status-label');
-    const $errorState  = document.getElementById('error-state');
-    const $dashboard   = document.getElementById('dashboard-content');
+    const $statusDot    = document.getElementById('status-dot');
+    const $statusLabel  = document.getElementById('status-label');
+    const $errorToken   = document.getElementById('error-token');
+    const $errorNetwork = document.getElementById('error-network');
+    const $dashboard    = document.getElementById('dashboard-content');
     const $techName    = document.getElementById('tech-name-display');
     const $loadingState = document.getElementById('loading-state');
     const $jobsList    = document.getElementById('jobs-list');
@@ -601,9 +610,16 @@
       $statusLabel.textContent = label;
     }
 
-    function showError() {
+    // AC1, AC2, AC3: show expired/invalid token error
+    function showTokenError() {
+      setStatus('error', 'EXPIRED');
+      $errorToken.style.display = 'block';
+    }
+
+    // AC6: show generic network/server error
+    function showNetworkError() {
       setStatus('error', 'ERROR');
-      $errorState.style.display = 'block';
+      $errorNetwork.style.display = 'block';
     }
 
     function formatJobId(uuid) {
@@ -814,8 +830,8 @@
       const token = params.get('token');
 
       if (!token) {
-        // No token in URL — show error state immediately
-        showError();
+        // AC1: No token in URL — show token error immediately, no fetch attempted
+        showTokenError();
         return;
       }
 
@@ -830,21 +846,23 @@
         );
 
         if (!res.ok) {
-          showError();
+          // AC6: HTTP error from Supabase (server/network issue, not a missing token)
+          showNetworkError();
           return;
         }
 
         const techs = await res.json();
 
         if (!Array.isArray(techs) || techs.length === 0) {
-          // AC2: No match found — redirect to error state
-          showError();
+          // AC2: Token not found in techs table — expired or invalid
+          showTokenError();
           return;
         }
 
         tech = techs[0];
       } catch (err) {
-        showError();
+        // AC6: Network failure (fetch threw) — generic error message
+        showNetworkError();
         return;
       }
 
