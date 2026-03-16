@@ -255,7 +255,8 @@ items:
   - id: E03S06
     epic: E03
     priority: high
-    status: refined
+    status: in_progress
+    started_at: "2026-03-16T13:22:04Z"
     estimate_hrs: 1
     artefact: contexts/artefacts/stories/E03S06.story.md
     dependencies: [E03S05]
