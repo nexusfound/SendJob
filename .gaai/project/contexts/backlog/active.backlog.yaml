@@ -255,8 +255,12 @@ items:
   - id: E03S06
     epic: E03
     priority: high
-    status: in_progress
+    status: done
     started_at: "2026-03-16T13:22:04Z"
+    completed_at: "2026-03-16T13:32:12Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E03S06 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 1
     artefact: contexts/artefacts/stories/E03S06.story.md
     dependencies: [E03S05]
