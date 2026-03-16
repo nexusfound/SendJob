@@ -1,0 +1,297 @@
+{
+  "name": "E03S06 — En Route Customer SMS",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Poll: Every 30 Seconds",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300],
+      "notes": "AC1: Triggers the polling loop every 30 seconds.\nLooks for jobs with status='En Route' and en_route_sms_sent=false.\nThe en_route_sms_sent flag is the idempotency gate — not the trigger interval.\n\nACTIVATION: Do NOT activate this workflow until:\n  1. supabase migration E03S06-add-en-route-sms-sent.sql has been run\n  2. SUPABASE_ANON_KEY_PLACEHOLDER replaced in all HTTP Request nodes\n  3. FROM_NUMBER_PLACEHOLDER in 'Send Customer SMS' replaced with approved Twilio 10DLC number\n  4. Twilio credentials configured in n8n (Settings → Credentials → Twilio)"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?status=eq.En%20Route&en_route_sms_sent=eq.false&select=id,client_id,customer_name,customer_phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-jobs",
+      "name": "GET Jobs Pending En Route SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "notes": "AC1: Queries jobs table for rows where status='En Route' AND en_route_sms_sent=false.\nReturns only required fields: id, client_id, customer_name, customer_phone.\nReturns an array (possibly empty) — empty array handled by Split In Items.\n\nURL encoding: 'En Route' is encoded as 'En%20Route' in the URL.\n\nSUPABASE HTTP REQUEST PATTERN (DEC-003): HTTP Request node — NOT native Supabase node.\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER with your anon key from:\n  Supabase Dashboard → Project Settings → API → anon public\n\nRLS REQUIREMENT: anon SELECT policy must exist on jobs table.\n  Verify: Supabase → Auth → Policies → jobs → SELECT (anon) exists.\n  This policy was confirmed in E02S05 delivery — should already be active.\n\nReference: $('GET Jobs Pending En Route SMS').item.json.id"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "node-split",
+      "name": "Split In Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300],
+      "notes": "Processes each matching job independently — one at a time.\nIf GET Jobs returns empty array, this node outputs nothing and the workflow\ncompletes silently (no SMS, no PATCH, no error).\n\nBatch size 1: each iteration handles exactly one job, keeping error isolation clean.\nA failure on one job (e.g. client_id lookup fails) does not block processing of others."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/clients?id=eq.{{ $('Split In Items').item.json.client_id }}&select=business_name,twilio_number",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-client",
+      "name": "GET Client Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300],
+      "notes": "AC3: Fetches business_name and twilio_number from clients table by client_id.\nbusiness_name is NEVER hardcoded — always pulled from Supabase (AC3).\ntwilio_number: the client's 10DLC number (stored in clients.twilio_number).\n\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER with your anon key.\nRLS SELECT on clients table must allow anon reads (established in Sprint 1).\n\nReference: $('GET Client Details').item.json.business_name\nReference: $('GET Client Details').item.json.twilio_number"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Split In Items').item.json.customer_phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-check-phone",
+      "name": "Customer Phone Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1160, 300],
+      "notes": "AC5: Checks whether jobs.customer_phone is non-null and non-empty.\nTrue branch (phone present): proceed to Build SMS Body → Send Customer SMS → PATCH\nFalse branch (phone null/empty): skip SMS entirely → go directly to PATCH to mark sent\n\nAC5 requirement: 'If customer_phone is null, skip SMS — workflow must not error.'\nSkipping to PATCH ensures the job is marked and won't be re-processed on next poll."
+    },
+    {
+      "parameters": {
+        "jsCode": "// E03S06 — AC2, AC3: Build canonical En Route customer SMS\n// Template: '[Business Name]: Your technician is on the way.'\n// AC3: business_name ALWAYS from clients table — never hardcoded\n\nconst businessName = $('GET Client Details').item.json.business_name;\nconst customerPhone = $('Split In Items').item.json.customer_phone;\nconst twilioFromNumber = $('GET Client Details').item.json.twilio_number;\n\n// Validate required fields — fail loudly, not silently\nif (!businessName) throw new Error('[E03S06] Missing clients.business_name — cannot build En Route SMS');\nif (!customerPhone) throw new Error('[E03S06] customer_phone missing — should not reach Build SMS Body (check IF node wiring)');\n\n// AC2: Exact template from conventions.md\n// '[Business Name]: Your technician is on the way.'\nconst smsBody = businessName + ': Your technician is on the way.';\n\nreturn [{\n  json: {\n    smsBody: smsBody,\n    customerPhone: customerPhone,\n    twilioFromNumber: twilioFromNumber\n  }\n}];"
+      },
+      "id": "node-build-sms",
+      "name": "Build SMS Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 200],
+      "notes": "AC2: Assembles exact canonical template: '[Business Name]: Your technician is on the way.'\nAC3: business_name read from $('GET Client Details').item.json.business_name — never hardcoded.\n\nFields returned:\n  smsBody: the complete SMS text\n  customerPhone: jobs.customer_phone (the destination number — E.164 format expected)\n  twilioFromNumber: clients.twilio_number (the From number for Twilio)\n\nIMPORTANT — n8n 2.x reference pattern:\n  ALWAYS: $('Node Name').item.json.field\n  NEVER:  $json.field for upstream node data\n  Code node output: return [{ json: { ... } }]\n  Expression mode: toggle orange '=' icon per field"
+    },
+    {
+      "parameters": {
+        "from": "=FROM_NUMBER_PLACEHOLDER",
+        "to": "={{ $('Build SMS Body').item.json.customerPhone }}",
+        "message": "={{ $('Build SMS Body').item.json.smsBody }}"
+      },
+      "id": "node-send-sms",
+      "name": "Send Customer SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1640, 200],
+      "continueOnFail": true,
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credentials",
+          "name": "Twilio account"
+        }
+      },
+      "notes": "AC4: Native n8n Twilio node — NOT HTTP Request (conventions.md, DEC-006).\nAC6: continueOnFail=true — Twilio send failure does NOT revert job status.\n\nFROM number: FROM_NUMBER_PLACEHOLDER\n  *** REPLACE THIS before activating ***\n  Twilio A2P 10DLC campaign not yet approved — using placeholder.\n  Replace with the approved 10DLC number in E.164 format: e.g. +13212489804\n  The client's twilio_number from the clients table is the intended source\n  but is stored as reference only — the From number used in actual Twilio\n  sends must be an approved campaign-registered number.\n\nTO number: jobs.customer_phone (from Build SMS Body output)\nMESSAGE: canonical En Route template assembled in Build SMS Body\n\nCREDENTIAL: Twilio (Account SID + Auth Token)\n  Configure: n8n → Settings → Credentials → New → Twilio\n  Update credential id 'twilio-credentials' to match your n8n credential ID."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?id=eq.{{ $('Split In Items').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"en_route_sms_sent\": true\n}",
+        "options": {}
+      },
+      "id": "node-patch-sms-sent",
+      "name": "PATCH jobs — Mark En Route SMS Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1880, 300],
+      "continueOnFail": true,
+      "notes": "AC1: Writes ONLY en_route_sms_sent=true — job status field is NEVER modified here.\n  jobs.status remains 'En Route' regardless of SMS outcome.\nAC6: This PATCH writes the sentinel, not the status. SMS delivery outcome has no\n  effect on the job status field.\n\ncontinueOnFail=true: if PATCH fails, workflow does not error. Worst case: duplicate\n  SMS on next poll cycle. The canonical template (AC2) is idempotent for the customer.\n\nBoth paths merge here:\n  - SMS sent path (from Send Customer SMS)\n  - Phone null/skip path (from Customer Phone Present? false branch)\n\nSUPABASE PATTERN (DEC-003): HTTP Request — NOT native Supabase node.\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER.\nRLS REQUIREMENT: anon UPDATE policy on jobs table must exist.\n  Confirmed by E03S05 delivery (tech dashboard PATCH works with anon key)."
+    }
+  ],
+  "connections": {
+    "Poll: Every 30 Seconds": {
+      "main": [
+        [
+          {
+            "node": "GET Jobs Pending En Route SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Jobs Pending En Route SMS": {
+      "main": [
+        [
+          {
+            "node": "Split In Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Items": {
+      "main": [
+        [
+          {
+            "node": "GET Client Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Client Details": {
+      "main": [
+        [
+          {
+            "node": "Customer Phone Present?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Phone Present?": {
+      "main": [
+        [
+          {
+            "node": "Build SMS Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PATCH jobs — Mark En Route SMS Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SMS Body": {
+      "main": [
+        [
+          {
+            "node": "Send Customer SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Customer SMS": {
+      "main": [
+        [
+          {
+            "node": "PATCH jobs — Mark En Route SMS Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "sprint-3" },
+    { "name": "E03S06" },
+    { "name": "tech-flow" },
+    { "name": "customer-sms" }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-16T00:00:00.000Z",
+  "versionId": "e03s06-v1",
+  "_comment": "INTEGRATION NOTES — READ BEFORE IMPORTING\n\n== PRE-ACTIVATION CHECKLIST ==\n  1. Run Supabase migration:\n       supabase/migrations/E03S06-add-en-route-sms-sent.sql\n     (Adds en_route_sms_sent boolean DEFAULT false to jobs table)\n     Run via: Supabase Dashboard → SQL Editor → paste and execute\n\n  2. Replace SUPABASE_ANON_KEY_PLACEHOLDER in ALL THREE HTTP Request nodes:\n       - 'GET Jobs Pending En Route SMS'\n       - 'GET Client Details'\n       - 'PATCH jobs — Mark En Route SMS Sent'\n     Location: Supabase Dashboard → Project Settings → API → anon public\n\n  3. Replace FROM_NUMBER_PLACEHOLDER in 'Send Customer SMS' node:\n     Twilio A2P 10DLC campaign not yet approved.\n     Replace with the approved Twilio number in E.164 format (e.g. +13212489804)\n     when the campaign is approved.\n\n  4. Configure Twilio credentials in n8n:\n     n8n → Settings → Credentials → New → Twilio\n     Enter: Account SID + Auth Token from Twilio Console\n     Update credential id 'twilio-credentials' to match your n8n credential ID.\n\n  5. Activate workflow — do NOT activate before steps 1-4 are complete.\n\n== WORKFLOW BEHAVIOR ==\n  - Polls every 30 seconds for jobs where status='En Route' AND en_route_sms_sent=false\n  - For each matching job: fetches client business_name, sends customer SMS, marks en_route_sms_sent=true\n  - If customer_phone is null: skips SMS, marks en_route_sms_sent=true (no error)\n  - SMS failure (Twilio): continueOnFail=true — job status is NEVER reverted\n  - Empty result (no En Route jobs): workflow completes silently, nothing to process\n\n== RLS REQUIREMENTS ==\n  jobs table: anon SELECT policy (read jobs to poll) — confirmed by E02S05\n  jobs table: anon UPDATE policy (write en_route_sms_sent) — confirmed by E03S05\n  clients table: anon SELECT policy (read business_name, twilio_number) — confirmed by Sprint 1\n\n== FIELD REFERENCES (n8n 2.x — critical) ==\n  ALWAYS: $('Node Name').item.json.fieldname\n  NEVER:  $json.fieldname for upstream node data\n  Code node output: return [{ json: { ... } }]\n  Expression mode: toggle orange '=' icon per field\n\n== URL ENCODING ==\n  'En Route' in the Supabase filter URL is encoded as 'En%20Route'\n  The URL in 'GET Jobs Pending En Route SMS' already includes this encoding.\n\n== E03S07 MIRROR ==\n  E03S07 (On Site SMS) is the mirror of this workflow.\n  Differences: status filter = 'On Site', sentinel = on_site_sms_sent,\n  SMS template = '[Business Name]: Your technician has arrived.'\n  Build E03S07 by duplicating this workflow and changing those three elements.\n\n== TEST PROCEDURE ==\n  1. Manually set a test job in Supabase: status='En Route', en_route_sms_sent=false\n  2. Ensure customer_phone is set to a valid test number (E.164 format)\n  3. Wait up to 30 seconds for poll cycle to fire\n  4. Verify: SMS received on customer_phone with correct business name\n  5. Verify: en_route_sms_sent=true in Supabase jobs table\n  6. Verify: second poll cycle does NOT resend (en_route_sms_sent=true filters it out)\n  7. Test null phone: set customer_phone=null on a test job, verify no error and en_route_sms_sent=true after cycle\n"
+}
