@@ -235,8 +235,12 @@ items:
   - id: E03S05
     epic: E03
     priority: high
-    status: in_progress
+    status: done
     started_at: "2026-03-15T23:59:07Z"
+    pr_url: "https://github.com/nexusfound/SendJob/pull/1"
+    pr_number: 1
+    pr_status: "open"
+    completed_at: "2026-03-16T00:10:03Z"
     estimate_hrs: 1
     artefact: contexts/artefacts/stories/E03S05.story.md
     dependencies: [E03S04]
