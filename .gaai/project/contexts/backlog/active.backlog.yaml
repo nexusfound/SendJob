@@ -65,7 +65,8 @@ items:
     epic: E02
     title: "N8N: send 'already assigned' SMS if job is no longer in New status"
     priority: high
-    status: refined
+    status: in_progress
+    started_at: "2026-03-17T22:05:35Z"
     estimate_hrs: 0.5
     artefact: contexts/artefacts/stories/E02S04.story.md
     dependencies: [E02S02]
