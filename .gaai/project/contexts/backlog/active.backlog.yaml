@@ -48,8 +48,12 @@ items:
     epic: E02
     title: "N8N: send error SMS to dispatcher if reply doesn't match a known tech"
     priority: high
-    status: in_progress
+    status: done
     started_at: "2026-03-17T02:08:55Z"
+    completed_at: "2026-03-17T02:16:09Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S03 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 0.5
     artefact: contexts/artefacts/stories/E02S03.story.md
     dependencies: [E02S02]
