@@ -43,7 +43,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/clients?dispatcher_phone=eq.{{ $('Parse SMS Fields').item.json.from_phone }}&select=id,business_name,twilio_number",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/clients?dispatcher_phone=eq.{{ encodeURIComponent($('Parse SMS Fields').item.json.from_phone) }}&select=id,business_name,twilio_number",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
