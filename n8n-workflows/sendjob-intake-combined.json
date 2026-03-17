@@ -1,0 +1,445 @@
+{
+  "name": "sendjob-intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sendjob-intake",
+        "responseMode": "responseNode",
+        "bodyContentType": "form-urlencoded",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e02s-01-webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "sendjob-intake"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b2c3d4e5-e02s-01-respond-node",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook').item.json.body;\nconst messageBody = body.Body || '';\nconst fromPhone = body.From || '';\nconst toPhone = body.To || '';\nreturn [{ json: { message_body: messageBody, from_phone: fromPhone, to_phone: toPhone, raw: body } }];"
+      },
+      "id": "c3d4e5f6-e02s-01-parse-fields",
+      "name": "Parse SMS Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/clients?dispatcher_phone=eq.{{ $('Parse SMS Fields').item.json.from_phone }}&select=id,business_name,twilio_number",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-client",
+      "name": "Get Client by Phone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Get Client by Phone').item.json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-client",
+      "name": "Client Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1160, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText = $('Parse SMS Fields').item.json.message_body || '';\nconst techName = rawText.trim();\nif (!techName) {\n  throw new Error('[E02S02] Empty message_body — no tech name to match');\n}\nreturn [{ json: { tech_name: techName } }];"
+      },
+      "id": "node-extract-tech-name",
+      "name": "Extract Tech Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/techs?client_id=eq.{{ $('Get Client by Phone').item.json.id }}&name=ilike.{{ $('Extract Tech Name').item.json.tech_name }}&select=id,name,phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-tech",
+      "name": "Get Tech by Name",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1640, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Get Tech by Name').item.json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-tech",
+      "name": "Tech Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1880, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?client_id=eq.{{ $('Get Client by Phone').item.json.id }}&status=eq.New&select=id,status,customer_name&order=created_at.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-job",
+      "name": "Get Latest New Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2120, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Get Latest New Job').item.json.status }}",
+              "rightValue": "New",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-new",
+      "name": "Job is New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2360, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?id=eq.{{ $('Get Latest New Job').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tech_id\": \"{{ $('Get Tech by Name').item.json.id }}\",\n  \"status\": \"Assigned\",\n  \"assigned_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "node-patch-job",
+      "name": "Assign Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2600, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobId = $('Get Latest New Job').item.json.id;\nconst jobShort = jobId.slice(-6).toUpperCase();\nconst techName = $('Get Tech by Name').item.json.name;\nconst dispatcherPhone = $('Parse SMS Fields').item.json.from_phone;\nconst fromNumber = $('Get Client by Phone').item.json.twilio_number;\n\nif (!jobId) throw new Error('[E02S02] job ID missing');\nif (!techName) throw new Error('[E02S02] tech name missing');\nif (!dispatcherPhone) throw new Error('[E02S02] dispatcher phone missing');\nif (!fromNumber) throw new Error('[E02S02] from_number missing');\n\nconst confirmMsg = `Job #${jobShort} assigned to ${techName}.`;\n\nreturn [{\n  json: {\n    confirmation_msg: confirmMsg,\n    dispatcher_phone: dispatcherPhone,\n    from_number: fromNumber\n  }\n}];"
+      },
+      "id": "node-build-confirm",
+      "name": "Build Confirmation SMS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2840, 200]
+    },
+    {
+      "parameters": {
+        "from": "={{ $('Build Confirmation SMS').item.json.from_number }}",
+        "to": "={{ $('Build Confirmation SMS').item.json.dispatcher_phone }}",
+        "message": "={{ $('Build Confirmation SMS').item.json.confirmation_msg }}"
+      },
+      "id": "node-send-sms",
+      "name": "Send Confirmation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [3080, 200],
+      "continueOnFail": true,
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credentials",
+          "name": "Twilio account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse SMS Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse SMS Fields": {
+      "main": [
+        [
+          {
+            "node": "Get Client by Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Client by Phone": {
+      "main": [
+        [
+          {
+            "node": "Client Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Found?": {
+      "main": [
+        [
+          {
+            "node": "Extract Tech Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Tech Name": {
+      "main": [
+        [
+          {
+            "node": "Get Tech by Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Tech by Name": {
+      "main": [
+        [
+          {
+            "node": "Tech Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tech Found?": {
+      "main": [
+        [
+          {
+            "node": "Get Latest New Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest New Job": {
+      "main": [
+        [
+          {
+            "node": "Job is New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job is New?": {
+      "main": [
+        [
+          {
+            "node": "Assign Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Job": {
+      "main": [
+        [
+          {
+            "node": "Build Confirmation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Confirmation SMS": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e02s01-s02-combined-v1",
+  "_NOTES": [
+    "COMBINED WORKFLOW: E02S01 + E02S02",
+    "",
+    "Chain: Webhook → Respond to Webhook → Parse SMS Fields → Get Client by Phone",
+    "       → Client Found? → Extract Tech Name → Get Tech by Name → Tech Found?",
+    "       → Get Latest New Job → Job is New? → Assign Job → Build Confirmation SMS",
+    "       → Send Confirmation SMS",
+    "",
+    "BEFORE ACTIVATING:",
+    "1. Replace SUPABASE_ANON_KEY_PLACEHOLDER in ALL 4 HTTP Request nodes",
+    "2. Configure Twilio credentials in n8n and update credential id in Send Confirmation SMS",
+    "3. Ensure a job with status=New exists in Supabase for testing",
+    "",
+    "E02S03 hook: connect 'Tech Found?' FALSE branch → error SMS node",
+    "E02S04 hook: connect 'Job is New?' FALSE branch → already-assigned SMS node"
+  ]
+}
