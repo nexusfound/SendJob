@@ -29,8 +29,12 @@ items:
     epic: E02
     title: "N8N: parse dispatcher SMS reply, match tech name/code to config table roster, mark job Assigned"
     priority: high
-    status: in_progress
+    status: done
     started_at: "2026-03-17T01:14:52Z"
+    completed_at: "2026-03-17T01:22:42Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S02 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 2
     artefact: contexts/artefacts/stories/E02S02.story.md
     dependencies: [E02S01]
