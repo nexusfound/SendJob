@@ -6,6 +6,7 @@
         "httpMethod": "POST",
         "path": "sendjob-intake",
         "responseMode": "responseNode",
+        "bodyContentType": "form-urlencoded",
         "options": {}
       },
       "id": "a1b2c3d4-e02s-01-webhook-node",
