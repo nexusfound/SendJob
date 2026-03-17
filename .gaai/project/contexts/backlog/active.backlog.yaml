@@ -60,13 +60,26 @@ items:
     notes: >
       Branch after tech lookup — if no match found, Twilio SMS back to dispatcher_phone.
       Message should include valid tech names/codes so dispatcher can correct quickly.
+    enhancements:
+      - id: E02S03-ENH-01
+        title: "Replace tech name list in error SMS with dispatch dashboard URL"
+        description: >
+          Instead of listing tech names in the error SMS (e.g. 'Valid techs: Mike, Jake'),
+          include a link to the dispatch dashboard so the dispatcher can assign from the UI.
+          Reduces SMS length and gives dispatcher full context on available techs and jobs.
+        status: idea
+        logged_at: "2026-03-17"
 
   - id: E02S04
     epic: E02
     title: "N8N: send 'already assigned' SMS if job is no longer in New status"
     priority: high
-    status: in_progress
+    status: done
     started_at: "2026-03-17T22:05:35Z"
+    completed_at: "2026-03-17T22:13:36Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S04 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 0.5
     artefact: contexts/artefacts/stories/E02S04.story.md
     dependencies: [E02S02]
