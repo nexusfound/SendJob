@@ -29,7 +29,8 @@ items:
     epic: E02
     title: "N8N: parse dispatcher SMS reply, match tech name/code to config table roster, mark job Assigned"
     priority: high
-    status: refined
+    status: in_progress
+    started_at: "2026-03-17T01:14:52Z"
     estimate_hrs: 2
     artefact: contexts/artefacts/stories/E02S02.story.md
     dependencies: [E02S01]
