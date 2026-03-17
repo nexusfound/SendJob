@@ -49,7 +49,11 @@
             "type": "main",
             "index": 0
           }
-        ],
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
         [
           {
             "node": "Parse SMS Fields",
