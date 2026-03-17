@@ -285,6 +285,64 @@
           "name": "Twilio account"
         }
       }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/techs?client_id=eq.{{ $('Get Client by Phone').item.json.id }}&select=name",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-fetch-all-techs",
+      "name": "Fetch All Techs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2120, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allTechs = $input.all();\nconst techNames = allTechs.map(item => item.json.name).filter(Boolean).join(', ');\nconst attempted = $('Extract Tech Name').item.json.tech_name;\nconst dispatcherPhone = $('Parse SMS Fields').item.json.from_phone;\nconst fromNumber = $('Get Client by Phone').item.json.twilio_number;\n\nif (!dispatcherPhone) throw new Error('[E02S03] dispatcher_phone missing');\nif (!fromNumber) throw new Error('[E02S03] from_number (twilio_number) missing');\n\nconst errorMsg = `No match for '${attempted}'. Valid techs: ${techNames}. Reply with a name to assign.`;\n\nreturn [{\n  json: {\n    error_msg: errorMsg,\n    dispatcher_phone: dispatcherPhone,\n    from_number: fromNumber\n  }\n}];"
+      },
+      "id": "node-build-error-sms",
+      "name": "Build Error SMS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2360, 400]
+    },
+    {
+      "parameters": {
+        "from": "={{ $('Build Error SMS').item.json.from_number }}",
+        "to": "={{ $('Build Error SMS').item.json.dispatcher_phone }}",
+        "message": "={{ $('Build Error SMS').item.json.error_msg }}"
+      },
+      "id": "node-send-error-sms",
+      "name": "Send Error SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [2600, 400],
+      "continueOnFail": true,
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credentials",
+          "name": "Twilio account"
+        }
+      }
     }
   ],
   "connections": {
@@ -373,6 +431,35 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Fetch All Techs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All Techs": {
+      "main": [
+        [
+          {
+            "node": "Build Error SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Error SMS": {
+      "main": [
+        [
+          {
+            "node": "Send Error SMS",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -425,21 +512,29 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "e02s01-s02-combined-v1",
+  "versionId": "e02s01-s03-combined-v1",
   "_NOTES": [
-    "COMBINED WORKFLOW: E02S01 + E02S02",
+    "COMBINED WORKFLOW: E02S01 + E02S02 + E02S03",
     "",
-    "Chain: Webhook → Respond to Webhook → Parse SMS Fields → Get Client by Phone",
-    "       → Client Found? → Extract Tech Name → Get Tech by Name → Tech Found?",
-    "       → Get Latest New Job → Job is New? → Assign Job → Build Confirmation SMS",
-    "       → Send Confirmation SMS",
+    "TRUE path (tech found):",
+    "  Webhook → Respond to Webhook → Parse SMS Fields → Get Client by Phone",
+    "  → Client Found? → Extract Tech Name → Get Tech by Name → Tech Found? [TRUE]",
+    "  → Get Latest New Job → Job is New? → Assign Job → Build Confirmation SMS",
+    "  → Send Confirmation SMS",
+    "",
+    "FALSE path (tech NOT found — E02S03):",
+    "  Tech Found? [FALSE] → Fetch All Techs → Build Error SMS → Send Error SMS",
     "",
     "BEFORE ACTIVATING:",
-    "1. Replace SUPABASE_ANON_KEY_PLACEHOLDER in ALL 4 HTTP Request nodes",
-    "2. Configure Twilio credentials in n8n and update credential id in Send Confirmation SMS",
+    "1. Replace SUPABASE_ANON_KEY_PLACEHOLDER in ALL 5 HTTP Request nodes",
+    "   (Get Client by Phone, Get Tech by Name, Get Latest New Job, Assign Job, Fetch All Techs)",
+    "2. Configure Twilio credentials in n8n — applies to Send Confirmation SMS and Send Error SMS",
     "3. Ensure a job with status=New exists in Supabase for testing",
     "",
-    "E02S03 hook: connect 'Tech Found?' FALSE branch → error SMS node",
+    "MANUAL WIRING REQUIRED after import (n8n v2 splitInBatches bug):",
+    "  - Verify 'Tech Found?' FALSE output (index 1) connects to 'Fetch All Techs'",
+    "    (n8n may re-wire to TRUE output on import — check and correct manually)",
+    "",
     "E02S04 hook: connect 'Job is New?' FALSE branch → already-assigned SMS node"
   ]
 }
