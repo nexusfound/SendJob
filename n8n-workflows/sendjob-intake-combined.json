@@ -167,7 +167,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?client_id=eq.{{ $('Get Client by Phone').item.json.id }}&status=eq.New&select=id,status,customer_name&order=created_at.desc&limit=1",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?client_id=eq.{{ $('Get Client by Phone').item.json[0].id }}&select=id,status,customer_name&order=created_at.desc&limit=1",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
