@@ -343,6 +343,67 @@
           "name": "Twilio account"
         }
       }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?client_id=eq.{{ $('Get Client by Phone').item.json.id }}&select=id,status,tech_id,techs(name)&order=created_at.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-current-job",
+      "name": "Get Current Job State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2600, 600],
+      "notes": "E02S04 AC1: Fetches most recent job for this client regardless of status.\nUsed to build the guard SMS when 'Job is New?' fires FALSE (no New job found).\n\nQuery: jobs?client_id=eq.[id]&select=id,status,tech_id,techs(name)&order=created_at.desc&limit=1\nThe ?select=techs(name) Supabase join returns tech name via jobs_tech_id_fkey.\n\nSupabase join result: $('Get Current Job State').item.json.techs will be:\n  { name: 'Mike' }  if tech is assigned\n  null              if no tech assigned (AC4: omit tech name gracefully)\n\nAC5: Supabase returns first element directly in n8n 2.x HTTP Request — access fields as:\n  $('Get Current Job State').item.json.id       → job UUID\n  $('Get Current Job State').item.json.status   → e.g. 'Assigned', 'En Route'\n  $('Get Current Job State').item.json.techs    → { name: '...' } or null\n\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER with actual anon key.\nRLS: anon SELECT on jobs table already confirmed (established E02S05)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// E02S04: Build 'already assigned' guard SMS for dispatcher\n// AC3: 'Job #[ID] is already [status]. Assigned to [Tech Name].'\n// AC4: If no tech assigned, omit tech name gracefully\n\nconst job = $('Get Current Job State').item.json;\nconst dispatcherPhone = $('Parse SMS Fields').item.json.from_phone;\nconst fromNumber = $('Get Client by Phone').item.json.twilio_number;\n\nif (!dispatcherPhone) throw new Error('[E02S04] dispatcher_phone missing');\nif (!fromNumber) throw new Error('[E02S04] from_number (twilio_number) missing');\n\nlet guardMsg;\n\nif (!job || !job.id) {\n  // Edge case: no jobs at all for this client\n  guardMsg = 'No active job found for your number. Please check and try again.';\n} else {\n  // AC3: Build message with job ID (last 6 chars, uppercased) + current status\n  const jobShort = job.id.slice(-6).toUpperCase();\n  const currentStatus = job.status || 'Unknown';\n\n  // AC4: Include tech name only if a tech is assigned\n  const techName = job.techs && job.techs.name ? job.techs.name : null;\n\n  if (techName) {\n    guardMsg = `Job #${jobShort} is already ${currentStatus}. Assigned to ${techName}.`;\n  } else {\n    guardMsg = `Job #${jobShort} is already ${currentStatus}.`;\n  }\n}\n\nreturn [{\n  json: {\n    guard_msg: guardMsg,\n    dispatcher_phone: dispatcherPhone,\n    from_number: fromNumber\n  }\n}];"
+      },
+      "id": "node-build-guard-sms",
+      "name": "Build Guard SMS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2840, 600],
+      "notes": "E02S04 AC3, AC4: Assembles 'already assigned' guard SMS.\n\nAC3: Message format: 'Job #[ID] is already [status]. Assigned to [Tech Name].'\n  - Job ID: last 6 chars of UUID, uppercased (conventions.md)\n  - status: live value from Supabase (e.g. 'Assigned', 'En Route', 'On Site', 'Complete')\n  - Tech Name: from Supabase join (techs.name via jobs_tech_id_fkey)\n\nAC4: If job.techs is null (no tech assigned), tech name clause is omitted:\n  Message becomes: 'Job #[ID] is already [status].'\n\nEdge case: If no jobs exist at all for this client, a fallback message is sent.\nThis is a belt-and-suspenders guard — in practice, if Job is New? fires false,\na job must exist (the query returned a row but status != New is impossible since\nwe filtered status=eq.New — so false = no row returned = no jobs in New status).\nThe Get Current Job State fetch retrieves the most recent job regardless of status.\n\nn8n 2.x reference pattern:\n  ALWAYS: $('Node Name').item.json.field\n  Code node output: return [{ json: { ... } }]"
+    },
+    {
+      "parameters": {
+        "from": "={{ $('Build Guard SMS').item.json.from_number }}",
+        "to": "={{ $('Build Guard SMS').item.json.dispatcher_phone }}",
+        "message": "={{ $('Build Guard SMS').item.json.guard_msg }}"
+      },
+      "id": "node-send-guard-sms",
+      "name": "Send Guard SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [3080, 600],
+      "continueOnFail": true,
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credentials",
+          "name": "Twilio account"
+        }
+      },
+      "notes": "E02S04 AC3, AC5: Sends 'already assigned' guard SMS to dispatcher.\n\nAC5: from_number = clients.twilio_number (same Twilio number as original job alert).\n  Pulled from 'Get Client by Phone' node — never hardcoded.\n\nAC2: No assignment is made — this node is on the false branch of 'Job is New?'.\n  The job record is NOT modified. This node only sends an informational SMS.\n\ncontinueOnFail=true: SMS failure does not block workflow execution.\nNative n8n Twilio node — NOT HTTP Request (conventions.md, DEC-006).\n\nCREDENTIAL SETUP: Same 'twilio-credentials' credential as other Twilio nodes.\nUpdate credential id after creating/verifying in n8n → Settings → Credentials."
     }
   ],
   "connections": {
@@ -482,6 +543,35 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Get Current Job State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Job State": {
+      "main": [
+        [
+          {
+            "node": "Build Guard SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Guard SMS": {
+      "main": [
+        [
+          {
+            "node": "Send Guard SMS",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -512,29 +602,51 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "e02s01-s03-combined-v1",
+  "versionId": "e02s01-s04-combined-v2",
   "_NOTES": [
-    "COMBINED WORKFLOW: E02S01 + E02S02 + E02S03",
+    "COMBINED WORKFLOW: E02S01 + E02S02 + E02S03 + E02S04",
     "",
-    "TRUE path (tech found):",
+    "TRUE path (tech found, job is New):",
     "  Webhook → Respond to Webhook → Parse SMS Fields → Get Client by Phone",
     "  → Client Found? → Extract Tech Name → Get Tech by Name → Tech Found? [TRUE]",
-    "  → Get Latest New Job → Job is New? → Assign Job → Build Confirmation SMS",
+    "  → Get Latest New Job → Job is New? [TRUE] → Assign Job → Build Confirmation SMS",
     "  → Send Confirmation SMS",
     "",
-    "FALSE path (tech NOT found — E02S03):",
+    "FALSE path — tech NOT found (E02S03):",
     "  Tech Found? [FALSE] → Fetch All Techs → Build Error SMS → Send Error SMS",
     "",
+    "FALSE path — job not New / already assigned (E02S04):",
+    "  Job is New? [FALSE] → Get Current Job State → Build Guard SMS → Send Guard SMS",
+    "  Guard SMS: 'Job #[ID] is already [status]. Assigned to [Tech Name].'",
+    "  If no tech assigned, tech name clause is omitted (AC4).",
+    "",
     "BEFORE ACTIVATING:",
-    "1. Replace SUPABASE_ANON_KEY_PLACEHOLDER in ALL 5 HTTP Request nodes",
-    "   (Get Client by Phone, Get Tech by Name, Get Latest New Job, Assign Job, Fetch All Techs)",
-    "2. Configure Twilio credentials in n8n — applies to Send Confirmation SMS and Send Error SMS",
+    "1. Replace SUPABASE_ANON_KEY_PLACEHOLDER in ALL 6 HTTP Request nodes:",
+    "   - Get Client by Phone",
+    "   - Get Tech by Name",
+    "   - Get Latest New Job",
+    "   - Assign Job",
+    "   - Fetch All Techs",
+    "   - Get Current Job State  ← NEW (E02S04)",
+    "   Source: Supabase Dashboard → Project Settings → API → anon public",
+    "2. Configure Twilio credentials in n8n — applies to:",
+    "   - Send Confirmation SMS",
+    "   - Send Error SMS",
+    "   - Send Guard SMS  ← NEW (E02S04)",
     "3. Ensure a job with status=New exists in Supabase for testing",
     "",
-    "MANUAL WIRING REQUIRED after import (n8n v2 splitInBatches bug):",
+    "MANUAL WIRING REQUIRED after import (n8n v2 import bug):",
     "  - Verify 'Tech Found?' FALSE output (index 1) connects to 'Fetch All Techs'",
     "    (n8n may re-wire to TRUE output on import — check and correct manually)",
+    "  - Verify 'Job is New?' FALSE output (index 1) connects to 'Get Current Job State'",
+    "    (same n8n v2 bug — check and correct manually after import)",
     "",
-    "E02S04 hook: connect 'Job is New?' FALSE branch → already-assigned SMS node"
+    "E02S04 TEST PROCEDURE:",
+    "  1. Ensure a job exists in Supabase with status != New (e.g. 'Assigned')",
+    "  2. POST to webhook: Body=Mike&From=[dispatcher_phone]&To=[twilio_number]",
+    "  3. Verify 'Job is New?' fires FALSE",
+    "  4. Verify 'Get Current Job State' fetches the job (check n8n execution log)",
+    "  5. Verify dispatcher receives SMS: 'Job #[ID] is already Assigned. Assigned to [Tech Name].'",
+    "  6. Verify NO PATCH was made to the jobs table (AC2)"
   ]
 }
