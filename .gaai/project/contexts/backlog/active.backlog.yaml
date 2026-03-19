@@ -544,6 +544,28 @@ items:
           Confirm the tag doesn't wrap awkwardly on small screens.
       These are not blockers for Sprint 4/5 but must pass before sendjob.app goes live.
 
+  - id: E06S09
+    epic: E06
+    title: "Initialize SendJobProject as nexusfound/sendjob-marketing GitHub repo + Netlify auto-deploy"
+    priority: high
+    status: done
+    completed_at: "2026-03-18"
+    estimate_hrs: 1
+    artefact: ~
+    dependencies: []
+    notes: >
+      SendJobProject has no version control. Steps:
+      (1) cd into SendJobProject, run: git init
+      (2) Create new repo on GitHub: nexusfound/sendjob-marketing
+      (3) git remote add origin https://github.com/nexusfound/sendjob-marketing.git
+      (4) git add . && git commit -m "feat: initial SendJob marketing site"
+      (5) git push -u origin main
+      (6) In Netlify: connect site to nexusfound/sendjob-marketing repo,
+          set publish directory to / (root), deploy on push to main.
+      (7) Configure custom domain: sendjob.app → Netlify DNS.
+      Result: every push to main auto-deploys to sendjob.app. Full version history.
+      Do this before or at the same time as deploying the landing page.
+
   - id: E06S05
     epic: E06
     title: "Add AggregateRating to SoftwareApplication schema once reviews are collected"
