@@ -11,7 +11,12 @@ items:
     epic: E02
     title: "Twilio inbound webhook: receive dispatcher SMS reply, route to N8N"
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-16T20:28:17Z"
+    completed_at: "2026-03-16T20:39:05Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S01 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 2
     artefact: contexts/artefacts/stories/E02S01.story.md
     dependencies: []
@@ -24,7 +29,12 @@ items:
     epic: E02
     title: "N8N: parse dispatcher SMS reply, match tech name/code to config table roster, mark job Assigned"
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-17T01:14:52Z"
+    completed_at: "2026-03-17T01:22:42Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S02 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 2
     artefact: contexts/artefacts/stories/E02S02.story.md
     dependencies: [E02S01]
@@ -38,19 +48,38 @@ items:
     epic: E02
     title: "N8N: send error SMS to dispatcher if reply doesn't match a known tech"
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-17T02:08:55Z"
+    completed_at: "2026-03-17T02:16:09Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S03 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 0.5
     artefact: contexts/artefacts/stories/E02S03.story.md
     dependencies: [E02S02]
     notes: >
       Branch after tech lookup — if no match found, Twilio SMS back to dispatcher_phone.
       Message should include valid tech names/codes so dispatcher can correct quickly.
+    enhancements:
+      - id: E02S03-ENH-01
+        title: "Replace tech name list in error SMS with dispatch dashboard URL"
+        description: >
+          Instead of listing tech names in the error SMS (e.g. 'Valid techs: Mike, Jake'),
+          include a link to the dispatch dashboard so the dispatcher can assign from the UI.
+          Reduces SMS length and gives dispatcher full context on available techs and jobs.
+        status: idea
+        logged_at: "2026-03-17"
 
   - id: E02S04
     epic: E02
     title: "N8N: send 'already assigned' SMS if job is no longer in New status"
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-17T22:05:35Z"
+    completed_at: "2026-03-17T22:13:36Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E02S04 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 0.5
     artefact: contexts/artefacts/stories/E02S04.story.md
     dependencies: [E02S02]
@@ -235,7 +264,12 @@ items:
   - id: E03S05
     epic: E03
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-15T23:59:07Z"
+    pr_url: "https://github.com/nexusfound/SendJob/pull/1"
+    pr_number: 1
+    pr_status: "open"
+    completed_at: "2026-03-16T00:10:03Z"
     estimate_hrs: 1
     artefact: contexts/artefacts/stories/E03S05.story.md
     dependencies: [E03S04]
@@ -250,7 +284,12 @@ items:
   - id: E03S06
     epic: E03
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-16T13:22:04Z"
+    completed_at: "2026-03-16T13:32:12Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E03S06 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 1
     artefact: contexts/artefacts/stories/E03S06.story.md
     dependencies: [E03S05]
@@ -264,7 +303,12 @@ items:
   - id: E03S07
     epic: E03
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-16T14:09:38Z"
+    completed_at: "2026-03-16T14:18:19Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E03S07 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 1
     artefact: contexts/artefacts/stories/E03S07.story.md
     dependencies: [E03S05]
@@ -277,12 +321,254 @@ items:
   - id: E03S08
     epic: E03
     priority: high
-    status: refined
+    status: done
+    started_at: "2026-03-16T12:48:10Z"
+    completed_at: "2026-03-16T12:54:17Z"
+    pr_url: "PENDING - gh CLI not installed; human must create PR from story/E03S08 to staging"
+    pr_number: "PENDING"
+    pr_status: "PENDING"
     estimate_hrs: 1
     artefact: contexts/artefacts/stories/E03S08.story.md
     dependencies: [E03S04]
-    title: "Tech dashboard: expired/invalid token error page with friendly message"
+    title: "Tech dashboard: expired/invalid token error page"
     notes: >
-      If token missing or not found in techs.magic_link_token — show error state.
-      Message: "This link has expired. Text JOBS to [number] to get a new one."
-      Same dark navy design — not a raw browser error. No partial dashboard visible.
+      If token missing or not found in techs.magic_link_token, show styled error page.
+      Message: "This link has expired. Contact your dispatcher."
+      Same dark navy design as tech dashboard. No partial dashboard content shown.
+
+# ── Sprint 4: Job Complete + E2E ────────────────────────────────────────────
+# Sprint Goal: Tech marks job complete → customer receives SMS with payment link.
+#              Full job lifecycle validated end-to-end before pilot client onboarding.
+# Capacity: 10 hrs planned / 12 hrs available / 2 hr buffer
+
+  - id: E04S01
+    epic: E04
+    title: "Tech dashboard: Job Complete button — shown when status = On Site, PATCHes status = Complete + completed_at"
+    priority: high
+    status: refined
+    estimate_hrs: 1
+    artefact: contexts/artefacts/stories/E04S01.story.md
+    dependencies: [E03S05]
+    notes: >
+      Same PATCH pattern as En Route / On Site buttons (E03S05).
+      completed_at column already exists in schema — no migration needed for this story.
+      Anon RLS UPDATE policy already in place.
+
+  - id: E04S02
+    epic: E04
+    title: "N8N: Job Complete → customer SMS with payment link + job_complete_sms_sent sentinel"
+    priority: high
+    status: refined
+    estimate_hrs: 1
+    artefact: contexts/artefacts/stories/E04S02.story.md
+    dependencies: [E04S01, E03S06]
+    notes: >
+      Mirror of E03S06/S07. Run SQL migration first: ALTER TABLE jobs ADD COLUMN job_complete_sms_sent boolean DEFAULT false.
+      Guard for null payment_link — skip SMS and set sentinel if no payment link configured.
+      After import, rewire Split In Items to loop output (known n8n v2.6.4 bug).
+
+  - id: E04S03
+    epic: E04
+    title: "E2E test script — manual checklist, full 13-step job lifecycle"
+    priority: high
+    status: refined
+    estimate_hrs: 2
+    artefact: contexts/artefacts/stories/E04S03.story.md
+    dependencies: [E04S01, E04S02, E04S04]
+    notes: >
+      Run only after all Sprint 4 stories are done. Uses real SMS and real phone numbers.
+      Flag Twilio A2P status before running — use Twilio-registered test number as recipient if approval still pending.
+      Any failures found during the run must be backlogged before marking this story done.
+
+  - id: E04S04
+    epic: E04
+    title: "Verify and wire dashboard assignment path triggers tech notification SMS"
+    priority: high
+    status: refined
+    estimate_hrs: 1
+    artefact: ~
+    dependencies: [E02S07, E03S03]
+    notes: >
+      PRD requires tech to receive an assignment SMS in BOTH paths: SMS reply AND dashboard dropdown.
+      E02S07 (dashboard assignment) PATCHes Supabase directly — it does NOT call n8n, so the tech
+      notification SMS (E03S03) may never fire when a dispatcher assigns from the web UI.
+      Acceptance criteria: assign a job from the dispatcher dashboard → tech receives SMS with job
+      details + magic link within 60 seconds. If not wired, options are:
+        (a) n8n polling workflow watches for status = Assigned + tech_id set + no token yet, fires SMS, or
+        (b) dashboard JS POSTs to the same n8n webhook after the Supabase PATCH.
+      Confirm which path is in place. If neither, implement option (a) as it is consistent with
+      the polling+sentinel pattern already used in E03S06/E03S07.
+      Must pass before E2E test (E04S03) runs.
+
+# ── Deferred / Future Items ──────────────────────────────────────────────────
+# Items confirmed in PRD but explicitly out of scope for current sprints.
+# Review before Sprint 5 planning and promote to refined when sprint capacity allows.
+
+  - id: E05S01
+    epic: E05
+    title: "Status-based magic link token expiry — expire 24hrs after tech's last job marked Complete"
+    priority: medium
+    status: idea
+    estimate_hrs: 2
+    artefact: ~
+    dependencies: [E04S01]
+    notes: >
+      PRD spec (final, resolved): token stays valid while tech has any active jobs
+      (status in New, Assigned, En Route, On Site). Token expires 24 hours after their
+      last job is marked Complete. One active token per tech — new assignment already
+      issues a fresh token (E03S02 done).
+      Implementation: n8n scheduled workflow (daily or every few hours) checks techs table
+      for rows where all their jobs are Complete AND token_issued_at + 24hrs < now().
+      On match: NULL out magic_link_token (or set a token_expired boolean).
+      Tech dashboard (E03S08) already shows the expired-token error page.
+      Error message will also need updating once "Text JOBS" renewal (E05S02) is built —
+      current message says "Contact your dispatcher" instead of the PRD-specified
+      "Text JOBS to [number] to get your current jobs."
+
+  - id: E05S02
+    epic: E05
+    title: "P1: 'Text JOBS' inbound SMS → tech receives fresh magic link to current job list"
+    priority: low
+    status: idea
+    estimate_hrs: 2
+    artefact: ~
+    dependencies: [E05S01]
+    notes: >
+      PRD P1 feature. Tech texts JOBS to the SendJob Twilio number → n8n generates a new
+      token, PATCHes techs.magic_link_token, sends SMS with fresh link.
+      Depends on E05S01 (token expiry) so the flow makes sense end-to-end.
+      Once built, update E03S08 expired-token error message to include the JOBS instruction.
+
+# ── Marketing Site / sendjob.app ─────────────────────────────────────────────
+# Outstanding decisions and tasks for the SendJob marketing site.
+# Not product code — tracked here to keep all work in one place.
+# Logged: 2026-03-18
+
+  - id: E06S01
+    epic: E06
+    title: "Update Stripe payment link to $299 setup fee product"
+    priority: high
+    status: idea
+    estimate_hrs: 0.5
+    artefact: ~
+    dependencies: []
+    notes: >
+      Current STRIPE_SETUP constant in index.html still points to old $199 product link.
+      Steps: (1) Create new $299 one-time payment product in Stripe dashboard.
+      (2) Copy the new buy.stripe.com link.
+      (3) Replace STRIPE_SETUP constant in SendJobProject/index.html.
+      TODO comment already placed in code to mark the location.
+      Deferred to Sprint 6 — complete before deploying sendjob.app landing page.
+
+  - id: E06S02
+    epic: E06
+    title: "Create og-image.jpg (1200x630) for social sharing and AI crawlers"
+    priority: medium
+    status: idea
+    estimate_hrs: 1
+    artefact: ~
+    dependencies: []
+    notes: >
+      og:image meta tag already points to /og-image.jpg but the file does not exist.
+      Until it exists, social shares and AI link previews will have no image.
+      Approach: design a 1200x630 image with SendJob branding and tagline,
+      or build og-image.html template and screenshot it.
+      Drop final file as /og-image.jpg in SendJobProject root.
+
+  - id: E06S03
+    epic: E06
+    title: "Build hvac, pool, cleaning, and lawn subdomain playbook pages"
+    priority: medium
+    status: idea
+    estimate_hrs: 4
+    artefact: ~
+    dependencies: []
+    notes: >
+      Sitemap references hvac.sendjob.app, pool.sendjob.app, cleaning.sendjob.app,
+      lawn.sendjob.app — none of these have a built index.html yet. Only plumbing exists.
+      Each needs a branded intake form (same pattern as plumbing Twilio variants).
+      Template: use plumbing-intake-with-costs-twilio.html as base, swap industry copy.
+      After building, add SendJob backlink footer (pattern already established in existing files).
+      Deploy each to its Netlify subdomain.
+
+  - id: E06S04
+    epic: E06
+    title: "Submit sitemap to Google Search Console after deploy"
+    priority: medium
+    status: idea
+    estimate_hrs: 0.5
+    artefact: ~
+    dependencies: []
+    notes: >
+      After deploying index.html, sitemap.xml, robots.txt to sendjob.app via Netlify:
+      (1) Verify site ownership in Google Search Console.
+      (2) Submit https://sendjob.app/sitemap.xml.
+      (3) Request indexing for sendjob.app/ in URL Inspection tool.
+
+  - id: E06S07
+    epic: E06
+    title: "Sprint 6 launch prep: restore all subdomain links, update SEO/AEO, update FAQ"
+    priority: high
+    status: idea
+    estimate_hrs: 2
+    artefact: ~
+    dependencies: [E06S03]
+    notes: >
+      After all 4 subdomain playbook pages are built and deployed (E06S03), restore
+      everything that was temporarily removed:
+      (1) Playbook section: convert 4 "coming soon" article cards back to <a href> links.
+      (2) Footer playbook links: replace "coming soon" spans with real links for all 5 trades.
+      (3) Sitemap: uncomment hvac, pool, cleaning, lawn subdomain entries.
+      (4) FAQ "What is the SendJob Playbook?" answer: restore all 5 live subdomain URLs.
+      (5) AI template block: update live playbooks list to all 5 subdomains.
+      (6) Re-evaluate SEO/AEO across all 5 playbook pages — add meta, schema, backlinks.
+      (7) Submit updated sitemap to Google Search Console.
+      Must run immediately after E06S03 is deployed. Do not deploy E06S03 without this.
+
+  - id: E06S08
+    epic: E06
+    title: "Mobile QA: test hero CTAs, SMS mockup, and lifecycle strip at 360–375px"
+    priority: medium
+    status: idea
+    estimate_hrs: 1
+    artefact: ~
+    dependencies: []
+    notes: >
+      Three specific things to verify on a real phone (or browser devtools at 360px/375px)
+      before the landing page is considered launch-ready:
+      (1) Hero CTA buttons — verify they don't crowd at 375px (iPhone SE width).
+          If needed, add flex-direction:column below 400px.
+      (2) SMS mockup section — side-by-side phone + steps layout may be tight at 360px.
+          Verify it reflows cleanly or add a breakpoint.
+      (3) Lifecycle strip rows — each row has number + icon + text + tag.
+          Confirm the tag doesn't wrap awkwardly on small screens.
+      These are not blockers for Sprint 4/5 but must pass before sendjob.app goes live.
+
+  - id: E06S05
+    epic: E06
+    title: "Add AggregateRating to SoftwareApplication schema once reviews are collected"
+    priority: low
+    status: idea
+    estimate_hrs: 0.5
+    artefact: ~
+    dependencies: []
+    notes: >
+      AEO / AI search enhancement. AI answer engines weight products with rated schema.
+      Once beta clients provide feedback, add aggregateRating block to SoftwareApplication
+      schema in index.html head. Even 3-5 genuine reviews unlocks the star display
+      in AI-generated answers and Google rich results.
+      Format: "aggregateRating":{"@type":"AggregateRating","ratingValue":"5","reviewCount":"3"}
+
+  - id: E06S06
+    epic: E06
+    title: "Add LinkedIn / social sameAs to Organization schema"
+    priority: low
+    status: idea
+    estimate_hrs: 0.25
+    artefact: ~
+    dependencies: []
+    notes: >
+      AEO entity disambiguation. Adding LinkedIn profile URL and any directory listings
+      to the sameAs array on the Organization schema helps AI models confirm that
+      "SendJob" by Nexus Found LLC is a distinct, verified entity.
+      Update the LocalBusiness schema sameAs array in index.html once profiles are live.
