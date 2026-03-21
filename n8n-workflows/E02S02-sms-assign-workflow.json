@@ -1,0 +1,450 @@
+{
+  "name": "E02S02 — SMS Assign: Parse Reply, Match Tech, Mark Assigned",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sendjob-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "sendjob-intake",
+      "notes": "Entry point — same webhook path as E02S01 (sendjob-intake).\nTwilio POSTs application/x-www-form-urlencoded with Body, From, To fields.\nThis workflow is the CONTINUATION of the E02S01 workflow.\n\nINTEGRATION OPTION A (Recommended):\n  Import this workflow into n8n as a separate workflow — it shares the same webhook path.\n  Both E02S01 and E02S02 can receive the same POST in parallel if n8n routes to multiple\n  workflows on the same path (verify your n8n version supports this).\n\nINTEGRATION OPTION B (Preferred — single workflow):\n  Open the existing E02S01 sendjob-intake workflow in n8n.\n  Connect the 'Parse SMS Fields' node output to 'Get Client by Phone' node from this workflow.\n  Import only from 'Get Client by Phone' onwards — skip the Webhook node here.\n\nFor the standalone import flow, this Webhook node mirrors E02S01's setup.\nThe 'Respond to Webhook' node is in E02S01 — no second 200 OK node needed if using Option B.\nIf using Option A (standalone), add a Respond to Webhook node wired to output 0.\n\nACTIVATION NOTE: Do NOT activate until:\n  1. SUPABASE_ANON_KEY_PLACEHOLDER replaced in all 3 HTTP Request nodes\n  2. Twilio credentials configured in n8n\n  3. Test job with status=New exists in Supabase"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "node-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [440, 160],
+      "notes": "AC2 (inherited from E02S01): Returns 200 OK immediately to Twilio.\nWired to Webhook output 0 (top) — fires before any downstream processing.\nIf using Integration Option B (extending E02S01 workflow), this node is NOT needed\n— E02S01 already has the Respond to Webhook wired."
+    },
+    {
+      "parameters": {
+        "jsCode": "// E02S01 — Parse SMS Fields (duplicated here for standalone mode)\n// In Option B (extending E02S01), this node is already present — skip this one.\nconst body = $('Webhook').item.json.body;\nconst messageBody = body.Body || '';\nconst fromPhone = body.From || '';\nconst toPhone = body.To || '';\nreturn [{ json: { message_body: messageBody, from_phone: fromPhone, to_phone: toPhone } }];"
+      },
+      "id": "node-parse-sms",
+      "name": "Parse SMS Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "notes": "Extracts message_body, from_phone, to_phone from Twilio's form-encoded POST.\nThis is the E02S01 Parse SMS Fields node — included here for standalone mode.\nIn Option B (extending E02S01 workflow), connect FROM the existing Parse SMS Fields node\nto 'Get Client by Phone' and remove this duplicate node.\n\nOutputs:\n  message_body: the dispatcher's SMS text (e.g. 'Mike')\n  from_phone: E.164 dispatcher phone (e.g. '+13215550100')\n  to_phone: Twilio number (e.g. '+13212489804')"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/clients?dispatcher_phone=eq.{{ $('Parse SMS Fields').item.json.from_phone }}&select=id,business_name,twilio_number",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-client",
+      "name": "Get Client by Phone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "notes": "AC2: Looks up client by dispatcher's from_phone to get client_id.\nAll downstream queries are scoped to this client_id — no cross-client data access.\n\nQuery: clients?dispatcher_phone=eq.[from_phone]&select=id,business_name,twilio_number\nSupabase returns first element directly in n8n 2.x — access as:\n  $('Get Client by Phone').item.json.id            → client UUID\n  $('Get Client by Phone').item.json.business_name  → e.g. 'AC Express'\n  $('Get Client by Phone').item.json.twilio_number  → e.g. '+13212489804'\n\nRLS: anon SELECT policy on clients table required (established Sprint 1).\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER with anon key from:\n  Supabase Dashboard → Project Settings → API → anon public\n\nAC6: HTTP Request node — NOT native Supabase node (conventions.md)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Get Client by Phone').item.json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-client",
+      "name": "Client Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 300],
+      "notes": "Guards against unknown dispatcher phone numbers.\nTrue branch (client found): proceed to tech name extraction.\nFalse branch (no client match): workflow exits silently — no SMS, no error.\nThis prevents processing SMS from unknown phone numbers."
+    },
+    {
+      "parameters": {
+        "jsCode": "// AC1: Extract tech name from dispatcher SMS reply\n// Trim whitespace — ilike in Supabase handles case-insensitive matching server-side\nconst rawText = $('Parse SMS Fields').item.json.message_body || '';\nconst techName = rawText.trim();\n\nif (!techName) {\n  throw new Error('[E02S02] Empty message_body — no tech name to match');\n}\n\nreturn [{ json: { tech_name: techName } }];"
+      },
+      "id": "node-extract-tech-name",
+      "name": "Extract Tech Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 200],
+      "notes": "AC1: Extracts tech name from the dispatcher's SMS reply body.\nTrimming whitespace only — case-insensitive matching delegated to Supabase ilike.\nThrows an error if message_body is empty (should not reach here if Parse SMS Fields ran).\n\nOutput: { tech_name: '<trimmed dispatcher reply>' }\n\nn8n 2.x reference pattern:\n  ALWAYS: $('Node Name').item.json.field\n  Code node output: return [{ json: { ... } }]"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/techs?client_id=eq.{{ $('Get Client by Phone').item.json.id }}&name=ilike.{{ $('Extract Tech Name').item.json.tech_name }}&select=id,name,phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-tech",
+      "name": "Get Tech by Name",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 200],
+      "notes": "AC1, AC2: Queries techs table with client_id scope + case-insensitive name match.\nQuery: techs?client_id=eq.[client_id]&name=ilike.[tech_name]&select=id,name,phone\n\nAC2: client_id=eq.[id] ensures match is scoped to this client only — no cross-client matching.\nAC1: ilike operator provides case-insensitive match (Mike = mike = MIKE).\n\nSupabase returns first element directly in n8n 2.x:\n  $('Get Tech by Name').item.json.id    → tech UUID\n  $('Get Tech by Name').item.json.name  → e.g. 'Mike'\n  $('Get Tech by Name').item.json.phone → e.g. '+13215550001'\n\nEmpty result (no match): item.json.id will be undefined — caught by IF node.\nAC6: HTTP Request node — NOT native Supabase node.\nRLS: anon SELECT on techs required (established Sprint 1).\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Get Tech by Name').item.json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-tech",
+      "name": "Tech Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1640, 200],
+      "notes": "Guards against unrecognized tech names.\nTrue branch (tech found): proceed to job lookup.\nFalse branch (no tech match): exits silently — E02S03 handles the error SMS to dispatcher.\nAC5 (E02S03 scope): error SMS for unrecognized tech name is out of scope for this story."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?client_id=eq.{{ $('Get Client by Phone').item.json.id }}&status=eq.New&select=id,status,customer_name&order=created_at.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-job",
+      "name": "Get Latest New Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1880, 200],
+      "notes": "AC3, AC5: Fetches the most recent job with status=New for this client.\nQuery: jobs?client_id=eq.[id]&status=eq.New&select=id,status,customer_name&order=created_at.desc&limit=1\n\nAC5: status=eq.New filter ensures we only get New jobs — any other status is excluded here.\nIf no New job exists: item.json.status will be undefined → IF node exits cleanly.\n\nOrder: created_at.desc + limit=1 → most recent New job.\nSupabase returns first element directly in n8n 2.x:\n  $('Get Latest New Job').item.json.id     → job UUID\n  $('Get Latest New Job').item.json.status  → 'New' (if found)\n\nAC6: HTTP Request node — NOT native Supabase node.\nRLS: anon SELECT on jobs required (confirmed E02S05).\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Get Latest New Job').item.json.status }}",
+              "rightValue": "New",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-new",
+      "name": "Job is New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2120, 200],
+      "notes": "AC5: Verifies job status is exactly 'New' before proceeding with assignment.\nTrue branch (status = New): proceed to PATCH assignment.\nFalse branch (wrong status OR no job returned):\n  - If no job: status field is undefined → condition fails → exits cleanly\n  - If job status != New: E02S04 handles the 'already assigned' SMS (out of scope here)\n\nThis is the explicit pre-assignment status guard required by AC5."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://tmoxppuxrwlabqzfzvin.supabase.co/rest/v1/jobs?id=eq.{{ $('Get Latest New Job').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer SUPABASE_ANON_KEY_PLACEHOLDER"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tech_id\": \"{{ $('Get Tech by Name').item.json.id }}\",\n  \"status\": \"Assigned\",\n  \"assigned_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "node-patch-job",
+      "name": "Assign Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2360, 200],
+      "notes": "AC3: PATCHes jobs table — sets tech_id, status=Assigned, assigned_at=now().\nURL filter: ?id=eq.[job_id] targets only this specific job.\n\nBody:\n  tech_id: matched tech UUID from 'Get Tech by Name'\n  status: 'Assigned' (hard-coded — this is the target state)\n  assigned_at: $now.toISO() → ISO 8601 timestamp\n\nPrefer: return=representation → Supabase returns the updated row.\n  Access updated row as $('Assign Job').item.json.[field]\n\nAC6: HTTP Request node — NOT native Supabase node.\nRLS: anon UPDATE policy on jobs table required.\n  Confirmed by E03S05 delivery (anon UPDATE on jobs established for tech dashboard PATCHes).\nIMPORTANT: Replace SUPABASE_ANON_KEY_PLACEHOLDER.\n\nDOWNSTREAM (E03S02): After this PATCH succeeds, E03S02 generates a magic link token.\n  To chain E03S02 inline: connect this node → 'Generate Magic Link Token' from E03S02 workflow."
+    },
+    {
+      "parameters": {
+        "jsCode": "// AC4: Build confirmation SMS for dispatcher\n// Template: 'Job #[ID] assigned to [Tech Name].'\n// Job # = last 6 chars of UUID, uppercased\n\nconst jobId = $('Get Latest New Job').item.json.id;\nconst jobShort = jobId.slice(-6).toUpperCase();\nconst techName = $('Get Tech by Name').item.json.name;\nconst dispatcherPhone = $('Parse SMS Fields').item.json.from_phone;\nconst fromNumber = $('Get Client by Phone').item.json.twilio_number;\n\nif (!jobId) throw new Error('[E02S02] job ID missing in Build Confirmation SMS');\nif (!techName) throw new Error('[E02S02] tech name missing in Build Confirmation SMS');\nif (!dispatcherPhone) throw new Error('[E02S02] dispatcher phone missing in Build Confirmation SMS');\nif (!fromNumber) throw new Error('[E02S02] from_number (twilio_number) missing in Build Confirmation SMS');\n\nconst confirmMsg = `Job #${jobShort} assigned to ${techName}.`;\n\nreturn [{\n  json: {\n    confirmation_msg: confirmMsg,\n    dispatcher_phone: dispatcherPhone,\n    from_number: fromNumber\n  }\n}];"
+      },
+      "id": "node-build-confirm",
+      "name": "Build Confirmation SMS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2600, 200],
+      "notes": "AC4: Assembles confirmation SMS for dispatcher.\nTemplate: 'Job #[ID] assigned to [Tech Name].'\nJob # = last 6 chars of job UUID, uppercased (conventions.md Job # format).\n\nOutputs:\n  confirmation_msg: e.g. 'Job #A1B2C3 assigned to Mike.'\n  dispatcher_phone: the From phone — this is who gets the confirmation\n  from_number: clients.twilio_number — the Twilio sender number\n\nn8n 2.x reference pattern:\n  ALWAYS: $('Node Name').item.json.field\n  NEVER: $json.field for upstream nodes\n  Code node output: return [{ json: { ... } }]"
+    },
+    {
+      "parameters": {
+        "from": "={{ $('Build Confirmation SMS').item.json.from_number }}",
+        "to": "={{ $('Build Confirmation SMS').item.json.dispatcher_phone }}",
+        "message": "={{ $('Build Confirmation SMS').item.json.confirmation_msg }}"
+      },
+      "id": "node-send-sms",
+      "name": "Send Confirmation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [2840, 200],
+      "continueOnFail": true,
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credentials",
+          "name": "Twilio account"
+        }
+      },
+      "notes": "AC4: Sends 'Job #[ID] assigned to [Tech Name].' confirmation SMS to dispatcher.\nAC6: Native n8n Twilio node — NOT HTTP Request (conventions.md, DEC-006).\n\nFROM: clients.twilio_number (pulled from Supabase — never hardcoded)\nTO: dispatcher's from_phone (the number that sent the original SMS)\nMESSAGE: 'Job #XXXXXX assigned to [Tech Name].'\n\ncontinueOnFail=true: SMS failure does NOT revert job assignment.\n  The job is already Assigned — confirmation SMS is informational only.\n\nCREDENTIAL SETUP:\n  n8n → Settings → Credentials → New → Twilio\n  Enter: Account SID + Auth Token from Twilio Console\n  The credential id 'twilio-credentials' must match your actual n8n credential ID.\n  Update this field after creating the credential in n8n.\n\nFROM NUMBER NOTE:\n  Twilio A2P 10DLC campaign may still be pending approval.\n  The from_number comes from clients.twilio_number in Supabase.\n  Ensure that number is approved for A2P before live SMS sends."
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse SMS Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse SMS Fields": {
+      "main": [
+        [
+          {
+            "node": "Get Client by Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Client by Phone": {
+      "main": [
+        [
+          {
+            "node": "Client Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Found?": {
+      "main": [
+        [
+          {
+            "node": "Extract Tech Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Tech Name": {
+      "main": [
+        [
+          {
+            "node": "Get Tech by Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Tech by Name": {
+      "main": [
+        [
+          {
+            "node": "Tech Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tech Found?": {
+      "main": [
+        [
+          {
+            "node": "Get Latest New Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest New Job": {
+      "main": [
+        [
+          {
+            "node": "Job is New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job is New?": {
+      "main": [
+        [
+          {
+            "node": "Assign Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Job": {
+      "main": [
+        [
+          {
+            "node": "Build Confirmation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Confirmation SMS": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "sprint-2" },
+    { "name": "E02S02" },
+    { "name": "dispatch" },
+    { "name": "sms-assignment" }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "e02s02-v1",
+  "_comment": "INTEGRATION NOTES — READ BEFORE IMPORTING\n\n== WORKFLOW OVERVIEW ==\nThis workflow implements the SMS assignment path:\n  1. Dispatcher sends SMS reply with tech name\n  2. Twilio forwards to n8n webhook (sendjob-intake)\n  3. Workflow looks up client by dispatcher phone → gets client_id\n  4. Looks up tech by name (case-insensitive) scoped to client_id\n  5. Finds most recent New job for this client\n  6. Guards: tech not found → exit; job not New → exit (E02S03/E02S04 handle those)\n  7. PATCHes jobs: tech_id, status=Assigned, assigned_at=now()\n  8. Sends confirmation SMS to dispatcher: 'Job #XXXXXX assigned to [Tech Name].'\n\n== INTEGRATION OPTIONS ==\nOption A — Standalone import:\n  Import this JSON as a new workflow in n8n.\n  Activate it. Both E02S01 and E02S02 will receive the same webhook POST.\n  (Verify n8n routes to multiple workflows on same webhook path — may need separate path.)\n\nOption B — Extend E02S01 (RECOMMENDED):\n  Open the E02S01 'sendjob-intake' workflow in n8n.\n  Import only the nodes from 'Get Client by Phone' onwards.\n  Connect the existing 'Parse SMS Fields' node → 'Get Client by Phone'.\n  Delete the Webhook, Respond to Webhook, and Parse SMS Fields nodes from this import.\n  This creates one unified workflow with a single webhook entry point.\n\n== PRE-ACTIVATION CHECKLIST ==\n  1. Replace SUPABASE_ANON_KEY_PLACEHOLDER in ALL THREE HTTP Request nodes:\n       - 'Get Client by Phone'\n       - 'Get Tech by Name'\n       - 'Get Latest New Job'\n       - 'Assign Job'\n     Location: Supabase Dashboard → Project Settings → API → anon public\n\n  2. Configure Twilio credentials in n8n:\n     n8n → Settings → Credentials → New → Twilio\n     Enter: Account SID + Auth Token from Twilio Console\n     Update the 'Send Confirmation SMS' credential id to match your n8n credential ID.\n\n  3. Verify RLS policies in Supabase:\n     - clients table: anon SELECT policy (established Sprint 1)\n     - techs table: anon SELECT policy (established Sprint 1)\n     - jobs table: anon SELECT policy (confirmed E02S05)\n     - jobs table: anon UPDATE policy (confirmed E03S05)\n\n  4. Create a test job in Supabase:\n     INSERT into jobs with status='New' and the test client_id\n     (Required to test the assignment PATCH path)\n\n  5. Activate the workflow (toggle at top right in n8n editor).\n\n== TEST PROCEDURE ==\n  1. Open Hoppscotch (hoppscotch.io)\n  2. POST https://nexusfound.cloud/webhook/sendjob-intake\n     Headers: Content-Type: application/x-www-form-urlencoded\n     Body: Body=Mike&From=%2B13215550100&To=%2B13212489804\n     (Replace +13215550100 with the dispatcher_phone stored in clients table)\n  3. Expected: 200 OK immediately\n  4. Check n8n execution log — all nodes should show green\n  5. Check Supabase jobs table: tech_id set, status='Assigned', assigned_at populated\n  6. Check dispatcher phone received SMS: 'Job #XXXXXX assigned to Mike.'\n\n== FIELD REFERENCES (n8n 2.x — critical) ==\n  ALWAYS: $('Node Name').item.json.fieldname\n  NEVER:  $json.fieldname for upstream node data\n  Code node output: return [{ json: { ... } }]\n  Expression mode: toggle orange '=' icon per field\n\n== DOWNSTREAM (E03S02) ==\n  After 'Assign Job' PATCH succeeds, E03S02 generates a magic link token for the tech.\n  To chain E03S02 inline: connect 'Assign Job' → 'Generate Magic Link Token' from E03S02 workflow.\n  Update the tech_id reference in E03S02 'Generate Magic Link Token' Code node to:\n    $input.item.json.tech_id  (reads tech_id from the Assign Job PATCH response)\n  The Assign Job PATCH returns the full updated row (Prefer: return=representation).\n\n== E02S03 / E02S04 HOOKS ==\n  E02S03 (error SMS — tech not found): connect 'Tech Found?' false branch → Twilio error SMS node\n  E02S04 (already assigned guard): connect 'Job is New?' false branch → Twilio guard SMS node\n  These stories extend THIS workflow — their false-branch exits are the hook points.\n"
+}

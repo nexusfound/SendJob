@@ -1,0 +1,1560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0A1628" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>SendJob — Dispatcher Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <!-- Supabase Auth JS client (E02S08) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    /* ─── Design Tokens (Playbook Design System) ────────────────────────── */
+    :root {
+      --navy:        #0A1628;
+      --navy-mid:    #0F2040;
+      --navy-light:  #162A4A;
+      --card:        rgba(15, 32, 64, 0.9);
+      --border:      rgba(0, 200, 255, 0.2);
+      --border-strong: rgba(0, 200, 255, 0.4);
+      --text:        #E8F4FD;
+      --text-muted:  #7BA7C4;
+      --urgent:      #FF4444;
+      --urgent-glow: rgba(255, 68, 68, 0.15);
+      --warn:        #FFB800;
+      --success:     #00D68F;
+      --ice:         #00C8FF;
+      --ice-dark:    #0099CC;
+      --ice-glow:    rgba(0, 200, 255, 0.15);
+      --tap-min:     52px;
+      --radius-card: 16px;
+      --pad-page:    16px;
+    }
+
+    /* ─── Reset & Base ──────────────────────────────────────────────────── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      font-family: 'Barlow', sans-serif;
+      background: var(--navy);
+      color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;
+      line-height: 1.5;
+      padding-bottom: env(safe-area-inset-bottom, 24px);
+    }
+
+    /* ─── Nav ───────────────────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px var(--pad-page);
+      background: rgba(10, 22, 40, 0.97);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-logo {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--ice), var(--ice-dark));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .nav-name {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      line-height: 1;
+    }
+
+    .nav-name span {
+      color: var(--ice);
+    }
+
+    .nav-client-sep {
+      color: var(--border);
+      font-size: 18px;
+      font-weight: 300;
+      margin: 0 2px;
+    }
+
+    .nav-client-name {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 7px;
+      display: none;
+    }
+
+    @media (min-width: 480px) {
+      .nav-tag { display: block; }
+    }
+
+    /* ─── Status Indicator ──────────────────────────────────────────────── */
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--navy-mid);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+
+    .status-dot.loading {
+      background: var(--ice);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .status-dot.loaded  { background: var(--success); }
+    .status-dot.error   { background: var(--urgent); }
+
+    /* E02S09: AC5 — "live" state: pulsing green dot when real-time is active */
+    .status-dot.live {
+      background: var(--success);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .status-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Main Layout ───────────────────────────────────────────────────── */
+    .main-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 28px var(--pad-page) 48px;
+    }
+
+    @media (min-width: 480px) {
+      :root { --pad-page: 24px; }
+    }
+
+    /* ─── Section Label ─────────────────────────────────────────────────── */
+    .section-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ice);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .section-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: -10px;
+      margin-bottom: 20px;
+      font-weight: 300;
+    }
+
+    /* ─── Table Container ───────────────────────────────────────────────── */
+    #job-table-container {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+    }
+
+    /* ─── Table ─────────────────────────────────────────────────────────── */
+    .jobs-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .jobs-table thead {
+      background: var(--navy-mid);
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .jobs-table thead th {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ice);
+      padding: 12px 16px;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Column widths */
+    .col-id       { width: 90px; }
+    .col-customer { width: 14%; }
+    .col-address  { width: 18%; }
+    .col-service  { width: 12%; }
+    .col-urgency  { width: 80px; }
+    .col-status   { width: 100px; }
+    .col-tech     { width: 12%; }
+    .col-assign   { width: 160px; }
+    .col-time     { width: 130px; }
+
+    .jobs-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+
+    .jobs-table tbody tr:last-child {
+      border-bottom: none;
+    }
+
+    .jobs-table tbody tr:hover {
+      background: var(--navy-light);
+    }
+
+    .jobs-table tbody td {
+      font-size: 14px;
+      font-weight: 400;
+      padding: 14px 16px;
+      color: var(--text);
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ─── Cell Treatments ───────────────────────────────────────────────── */
+    .cell-id {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ice);
+      letter-spacing: 0.5px;
+    }
+
+    .cell-address {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .badge-urgency-normal {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .badge-urgency-urgent {
+      background: var(--urgent-glow);
+      color: var(--urgent);
+      border: 1px solid rgba(255, 68, 68, 0.4);
+    }
+
+    .badge-status {
+      background: rgba(0, 214, 143, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(0, 214, 143, 0.3);
+    }
+
+    .badge-status-assigned {
+      background: var(--ice-glow);
+      color: var(--ice);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+    }
+
+    .badge-status-other {
+      background: var(--navy-mid);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .cell-tech-unassigned {
+      color: var(--text-muted);
+      font-style: italic;
+      font-size: 13px;
+    }
+
+    .cell-time {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Assignment Dropdown (E02S07) ──────────────────────────────────── */
+    .assign-select {
+      background:   var(--navy-mid);
+      border:       1px solid var(--border);
+      color:        var(--text);
+      font-family:  'Barlow', sans-serif;
+      font-size:    16px; /* CRITICAL: prevents iOS auto-zoom */
+      font-weight:  400;
+      min-height:   52px; /* AC5: minimum tap target */
+      border-radius: 8px;
+      padding:      0 10px;
+      width:        100%;
+      cursor:       pointer;
+      appearance:   none;
+      -webkit-appearance: none;
+      outline:      none;
+      transition:   border-color 0.15s;
+    }
+
+    .assign-select:focus {
+      border-color: var(--ice);
+    }
+
+    .assign-select:disabled {
+      opacity:  0.45;
+      cursor:   default;
+    }
+
+    .assign-error {
+      color:       var(--urgent);
+      font-size:   12px;
+      font-weight: 400;
+      margin-top:  4px;
+      line-height: 1.4;
+    }
+
+    .reassign-btn {
+      display:      inline-block;
+      margin-left:  8px;
+      font-size:    11px;
+      font-family:  'Barlow Condensed', sans-serif;
+      font-weight:  700;
+      letter-spacing: 0.5px;
+      color:        var(--ice);
+      background:   transparent;
+      border:       1px solid var(--border);
+      border-radius: 5px;
+      padding:      2px 7px;
+      cursor:       pointer;
+      vertical-align: middle;
+      transition:   border-color 0.15s, color 0.15s;
+      min-height:   24px;
+    }
+
+    .reassign-btn:hover {
+      border-color: var(--ice);
+      color:        var(--text);
+    }
+
+    /* ─── Empty State ───────────────────────────────────────────────────── */
+    #empty-state {
+      display: none;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 60px 24px;
+      text-align: center;
+    }
+
+    .empty-icon {
+      font-size: 2.5rem;
+      margin-bottom: 14px;
+      opacity: 0.4;
+    }
+
+    .empty-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      letter-spacing: 0.5px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .empty-subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 300;
+    }
+
+    /* ─── Error State ───────────────────────────────────────────────────── */
+    #error-state {
+      display: none;
+      background: var(--urgent-glow);
+      border: 1px solid var(--urgent);
+      border-radius: var(--radius-card);
+      padding: 20px 24px;
+    }
+
+    .error-heading {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--urgent);
+      margin-bottom: 6px;
+    }
+
+    .error-message {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 300;
+    }
+
+    /* ─── Loading Skeleton ──────────────────────────────────────────────── */
+    #loading-state {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+    }
+
+    .skeleton-header {
+      height: 42px;
+      background: var(--navy-mid);
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .skeleton-row {
+      height: 50px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 14px;
+    }
+
+    .skeleton-row:last-child { border-bottom: none; }
+
+    .skeleton-cell {
+      height: 10px;
+      background: linear-gradient(90deg, var(--navy-mid) 25%, var(--navy-light) 50%, var(--navy-mid) 75%);
+      background-size: 200% 100%;
+      border-radius: 4px;
+      animation: shimmer 1.4s ease infinite;
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ─── Urgent Row Treatment (E02S06) ─────────────────────────────────── */
+    .jobs-table tbody tr.urgent-row {
+      border-left: 3px solid var(--urgent);
+      background: var(--urgent-glow);
+    }
+
+    .jobs-table tbody tr.urgent-row:hover {
+      background: rgba(255, 68, 68, 0.22);
+    }
+
+    /* ─── Auth: Login View (E02S08) ─────────────────────────────────────── */
+    #login-view {
+      display: none;
+      min-height: 100dvh;
+      align-items: center;
+      justify-content: center;
+      padding: 24px var(--pad-page);
+      background: var(--navy);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--navy-mid);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 32px 24px;
+    }
+
+    .login-heading {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .login-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 300;
+      margin-bottom: 24px;
+    }
+
+    .login-field {
+      margin-bottom: 16px;
+    }
+
+    .login-label {
+      display: block;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ice);
+      margin-bottom: 6px;
+    }
+
+    .login-input {
+      display: block;
+      width: 100%;
+      font-family: 'Barlow', sans-serif;
+      font-size: 16px; /* AC7: prevents iOS auto-zoom */
+      font-weight: 400;
+      color: var(--text);
+      background: var(--navy);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      min-height: var(--tap-min); /* AC7: 52px tap target */
+      padding: 0 14px;
+      outline: none;
+      transition: border-color 0.15s;
+      -webkit-appearance: none;
+    }
+
+    .login-input:focus {
+      border-color: var(--ice); /* AC7: --ice focus ring */
+    }
+
+    .login-error {
+      display: none;
+      color: var(--urgent);
+      font-size: 14px;
+      font-weight: 400;
+      margin-top: 12px;
+      line-height: 1.4;
+    }
+
+    .login-submit {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--navy);
+      background: var(--ice);
+      border: none;
+      border-radius: 8px;
+      min-height: var(--tap-min); /* AC7: 52px tap target */
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .login-submit:hover {
+      background: var(--ice-dark);
+    }
+
+    .login-submit:active {
+      background: var(--ice-dark);
+    }
+
+    /* Auth: Logout button in nav (E02S08) */
+    #logout-btn {
+      display: none;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-family: 'Barlow', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      line-height: 1;
+      min-height: 32px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    #logout-btn:hover {
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    /* ─── Responsive: Mobile Card Stack ─────────────────────────────────── */
+    @media (max-width: 640px) {
+      #job-table-container {
+        border: none;
+        background: transparent;
+        overflow: visible;
+      }
+
+      .jobs-table,
+      .jobs-table thead,
+      .jobs-table tbody,
+      .jobs-table th,
+      .jobs-table td,
+      .jobs-table tr {
+        display: block;
+      }
+
+      .jobs-table thead {
+        display: none;
+      }
+
+      .jobs-table tbody tr {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        margin-bottom: 10px;
+        padding: 16px;
+        white-space: normal;
+        transition: background 0.15s;
+      }
+
+      .jobs-table tbody tr:hover {
+        background: var(--navy-light);
+      }
+
+      .jobs-table tbody tr.urgent-row {
+        border-color: var(--urgent);
+        background: var(--urgent-glow);
+      }
+
+      .jobs-table tbody tr.urgent-row:hover {
+        background: rgba(255, 68, 68, 0.22);
+      }
+
+      .jobs-table tbody td {
+        padding: 5px 0;
+        font-size: 14px;
+        border: none;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        overflow: visible;
+        white-space: normal;
+        text-overflow: unset;
+      }
+
+      .jobs-table tbody td::before {
+        content: attr(data-label);
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: var(--ice);
+        min-width: 90px;
+        padding-top: 3px;
+        flex-shrink: 0;
+      }
+
+      .cell-id { font-size: 15px; }
+
+      #loading-state {
+        border-radius: var(--radius-card);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Nav ────────────────────────────────────────────────────────────── -->
+  <nav>
+    <div class="nav-brand">
+      <div class="nav-logo">📋</div>
+      <div class="nav-name">Send<span>Job</span></div>
+      <span class="nav-client-sep" id="nav-client-sep" style="display:none">|</span>
+      <span class="nav-client-name" id="nav-client-name"></span>
+    </div>
+    <div class="nav-right">
+      <span class="nav-tag">Dispatcher</span>
+      <div class="status-pill">
+        <div class="status-dot loading" id="status-dot"></div>
+        <span class="status-label" id="status-label">Loading…</span>
+      </div>
+      <!-- AC6: Logout button — shown only when authenticated -->
+      <button id="logout-btn" type="button">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- ── Login View (E02S08) — shown when unauthenticated (AC1) ─────────── -->
+  <div id="login-view">
+    <div class="login-card">
+      <div class="login-heading">Send<span style="color:var(--ice)">Job</span></div>
+      <div class="login-sub">Dispatcher — sign in to continue</div>
+      <form id="login-form" novalidate>
+        <div class="login-field">
+          <label class="login-label" for="login-email">Email</label>
+          <input
+            class="login-input"
+            id="login-email"
+            type="email"
+            name="email"
+            autocomplete="username"
+            placeholder="dispatcher@example.com"
+            required
+          />
+        </div>
+        <div class="login-field">
+          <label class="login-label" for="login-password">Password</label>
+          <input
+            class="login-input"
+            id="login-password"
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            placeholder="••••••••"
+            required
+          />
+        </div>
+        <!-- AC4: error shown on failed login; email field NOT cleared -->
+        <div class="login-error" id="login-error" role="alert"></div>
+        <button class="login-submit" type="submit">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── App View (E02S08) — shown only when authenticated (AC1, AC3) ──── -->
+  <div id="app-view" style="display:none">
+
+  <!-- ── Main ──────────────────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <div class="section-label">📋 Job Queue</div>
+    <p class="section-subtitle">All active jobs — oldest first. Assign via SMS or dashboard.</p>
+
+    <!-- Loading skeleton -->
+    <div id="loading-state">
+      <div class="skeleton-header"></div>
+      <div class="skeleton-row">
+        <div class="skeleton-cell" style="width:70px"></div>
+        <div class="skeleton-cell" style="width:120px"></div>
+        <div class="skeleton-cell" style="width:160px"></div>
+        <div class="skeleton-cell" style="width:90px"></div>
+      </div>
+      <div class="skeleton-row">
+        <div class="skeleton-cell" style="width:70px"></div>
+        <div class="skeleton-cell" style="width:100px"></div>
+        <div class="skeleton-cell" style="width:180px"></div>
+        <div class="skeleton-cell" style="width:80px"></div>
+      </div>
+      <div class="skeleton-row">
+        <div class="skeleton-cell" style="width:70px"></div>
+        <div class="skeleton-cell" style="width:140px"></div>
+        <div class="skeleton-cell" style="width:130px"></div>
+        <div class="skeleton-cell" style="width:100px"></div>
+      </div>
+    </div>
+
+    <!-- Job table (hidden until data loads) -->
+    <div id="job-table-container" style="display:none">
+      <table class="jobs-table" role="table" aria-label="Job queue">
+        <thead>
+          <tr>
+            <th class="col-id" scope="col">Job ID</th>
+            <th class="col-customer" scope="col">Customer</th>
+            <th class="col-address" scope="col">Address</th>
+            <th class="col-service" scope="col">Service Type</th>
+            <th class="col-urgency" scope="col">Urgency</th>
+            <th class="col-status" scope="col">Status</th>
+            <th class="col-tech" scope="col">Assigned Tech</th>
+            <th class="col-assign" scope="col">Assign</th>
+            <th class="col-time" scope="col">Submitted</th>
+          </tr>
+        </thead>
+        <tbody id="job-table-body">
+          <!-- Rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Empty state -->
+    <div id="empty-state">
+      <div class="empty-icon">📋</div>
+      <div class="empty-title">No Jobs in Queue</div>
+      <div class="empty-subtitle">New jobs will appear here when submitted.</div>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-state">
+      <div class="error-heading">⚡ Data Load Failed</div>
+      <div class="error-message" id="error-message-text">
+        Unable to load jobs. Check your connection and try again.
+      </div>
+    </div>
+
+  </main>
+
+  </div><!-- /#app-view -->
+
+  <script>
+    // ─── Configuration ─────────────────────────────────────────────────────
+    var SUPABASE_URL      = 'https://tmoxppuxrwlabqzfzvin.supabase.co';
+    var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtb3hwcHV4cndsYWJxemZ6dmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0ODU2OTgsImV4cCI6MjA4NjA2MTY5OH0.Rk4Guy1nBDkUohg6qOM25T_FCahvcSaa4y-b9ilqWUQ';
+    // REPLACE_WITH_YOUR_CLIENT_UUID — set this to the client's UUID from the clients table
+    var CLIENT_ID         = 'a0000000-0000-0000-0000-000000000001';
+
+    // ─── Supabase Auth client (E02S08) ─────────────────────────────────────
+    // NOTE: Supabase Auth JS v2 persists session in localStorage automatically (AC5).
+    // NOTE: RLS on jobs table must allow authenticated reads/writes. The dispatcher
+    //       account must be created in Supabase Auth (Dashboard → Authentication → Users).
+    //       Existing anon policies from Sprint 1 remain; add auth.role() = 'authenticated'
+    //       policies in Supabase Dashboard if anon policies are removed.
+    var supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ─── State ─────────────────────────────────────────────────────────────
+    var techsList          = []; // populated by loadTechs(); used by buildJobRow + assignTech
+    var currentAccessToken = null; // set on login/session restore; used in fetch Authorization headers
+    var realtimeChannel    = null; // E02S09: holds active Supabase real-time channel; null when not subscribed
+
+    // ─── DOM references ────────────────────────────────────────────────────
+    var loadingEl   = document.getElementById('loading-state');
+    var tableEl     = document.getElementById('job-table-container');
+    var tbodyEl     = document.getElementById('job-table-body');
+    var emptyEl     = document.getElementById('empty-state');
+    var errorEl     = document.getElementById('error-state');
+    var errorTextEl = document.getElementById('error-message-text');
+    var statusDot   = document.getElementById('status-dot');
+    var statusLabel = document.getElementById('status-label');
+
+    // ─── Helpers ───────────────────────────────────────────────────────────
+    function formatTime(isoString) {
+      if (!isoString) return '—';
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          month: 'short',
+          day:   'numeric',
+          hour:  'numeric',
+          minute: '2-digit'
+        }).format(new Date(isoString));
+      } catch (err) {
+        return isoString;
+      }
+    }
+
+    function statusBadgeClass(status) {
+      if (!status) return 'badge badge-status-other';
+      var normalized = status.toLowerCase();
+      if (normalized === 'new')      return 'badge badge-status';
+      if (normalized === 'assigned') return 'badge badge-status-assigned';
+      return 'badge badge-status-other';
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // ─── Render ────────────────────────────────────────────────────────────
+    function buildTechOptions() {
+      // Build <option> elements from techsList
+      var opts = '<option value="" disabled selected>\u2014 Select Tech \u2014</option>';
+      for (var i = 0; i < techsList.length; i++) {
+        opts += '<option value="' + escapeHtml(techsList[i].id) + '">'
+              + escapeHtml(techsList[i].name) + '</option>';
+      }
+      return opts;
+    }
+
+    function buildAssignCell(job) {
+      var status = (job.status || '').toLowerCase();
+      var isNew = status === 'new';
+
+      if (isNew) {
+        // New job — show dropdown directly
+        var noTechs   = techsList.length === 0;
+        var selectHtml = '<select class="assign-select"'
+          + (noTechs ? ' disabled title="No techs loaded"' : '')
+          + ' data-job-id="' + escapeHtml(job.id) + '">'
+          + (noTechs
+              ? '<option value="" disabled selected>No techs loaded</option>'
+              : buildTechOptions())
+          + '</select>';
+        return '<td data-label="Assign">' + selectHtml + '</td>';
+      }
+
+      // All other statuses — show tech name + Change button
+      var techName = (job.techs && job.techs.name) ? job.techs.name : '\u2014';
+      return '<td data-label="Assign">'
+           + escapeHtml(techName)
+           + '<button class="reassign-btn" data-job-id="' + escapeHtml(job.id) + '">Change</button>'
+           + '</td>';
+    }
+
+    function showReassignDropdown(btn) {
+      var jobId = btn.getAttribute('data-job-id');
+      var td    = btn.parentNode;
+      var noTechs = techsList.length === 0;
+      var selectHtml = '<select class="assign-select"'
+        + (noTechs ? ' disabled title="No techs loaded"' : '')
+        + ' data-job-id="' + escapeHtml(jobId) + '">'
+        + (noTechs
+            ? '<option value="" disabled selected>No techs loaded</option>'
+            : buildTechOptions())
+        + '</select>';
+      td.innerHTML = selectHtml;
+      var selectEl = td.querySelector('.assign-select');
+      if (selectEl) {
+        selectEl.addEventListener('change', function() {
+          assignTech(jobId, this);
+        });
+        selectEl.focus();
+      }
+    }
+
+    function buildJobRow(job) {
+      var assignedTech     = (job.techs && job.techs.name) ? job.techs.name : 'Unassigned';
+      var techIsUnassigned = !(job.techs && job.techs.name);
+      var urgencyText      = job.is_urgent ? 'URGENT' : 'Normal';
+      var urgencyClass     = job.is_urgent ? 'badge badge-urgency-urgent' : 'badge badge-urgency-normal';
+      var formattedTime    = formatTime(job.created_at);
+
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-job-id', job.id); // E02S09: used for real-time row lookup
+      if (job.is_urgent) { tr.classList.add('urgent-row'); }
+      tr.innerHTML = [
+        '<td class="cell-id" data-label="Job ID">'        + escapeHtml(job.id)                                        + '</td>',
+        '<td data-label="Customer">'                       + escapeHtml(job.customer_name)                             + '</td>',
+        '<td class="cell-address" data-label="Address">'  + escapeHtml(job.service_address)                           + '</td>',
+        '<td data-label="Service Type">'                   + escapeHtml(job.service_type)                              + '</td>',
+        '<td data-label="Urgency"><span class="'          + urgencyClass + '">' + escapeHtml(urgencyText) + '</span></td>',
+        '<td data-label="Status"><span class="'           + statusBadgeClass(job.status) + '">' + escapeHtml(job.status || '—') + '</span></td>',
+        '<td data-label="Assigned Tech">'                  + (techIsUnassigned
+                                                               ? '<span class="cell-tech-unassigned">Unassigned</span>'
+                                                               : escapeHtml(assignedTech))                             + '</td>',
+        buildAssignCell(job),
+        '<td class="cell-time" data-label="Submitted">'   + escapeHtml(formattedTime)                                 + '</td>',
+      ].join('');
+
+      // Attach onchange for New-status dropdown
+      var selectEl = tr.querySelector('.assign-select');
+      if (selectEl) {
+        selectEl.addEventListener('change', function() {
+          assignTech(job.id, this);
+        });
+      }
+
+      // Attach onclick for Assigned-status Change button
+      var reassignBtn = tr.querySelector('.reassign-btn');
+      if (reassignBtn) {
+        reassignBtn.addEventListener('click', function() {
+          showReassignDropdown(this);
+        });
+      }
+
+      return tr;
+    }
+
+    // ─── State transitions ─────────────────────────────────────────────────
+    function showLoading() {
+      loadingEl.style.display = 'block';
+      tableEl.style.display   = 'none';
+      emptyEl.style.display   = 'none';
+      errorEl.style.display   = 'none';
+      statusDot.className     = 'status-dot loading';
+      statusLabel.textContent = 'Loading\u2026';
+    }
+
+    function showTable(jobs) {
+      loadingEl.style.display = 'none';
+      tableEl.style.display   = 'block';
+      emptyEl.style.display   = 'none';
+      errorEl.style.display   = 'none';
+      statusDot.className     = 'status-dot loaded';
+      statusLabel.textContent = jobs.length + (jobs.length === 1 ? ' job' : ' jobs');
+
+      tbodyEl.innerHTML = '';
+      jobs.forEach(function(job) {
+        tbodyEl.appendChild(buildJobRow(job));
+      });
+    }
+
+    function showEmpty() {
+      loadingEl.style.display = 'none';
+      tableEl.style.display   = 'none';
+      emptyEl.style.display   = 'block';
+      errorEl.style.display   = 'none';
+      statusDot.className     = 'status-dot loaded';
+      statusLabel.textContent = '0 jobs';
+    }
+
+    function showError(message) {
+      loadingEl.style.display  = 'none';
+      tableEl.style.display    = 'none';
+      emptyEl.style.display    = 'none';
+      errorEl.style.display    = 'block';
+      statusDot.className      = 'status-dot error';
+      statusLabel.textContent  = 'Error';
+      errorTextEl.textContent  = message || 'Unable to load jobs. Check your connection and try again.';
+    }
+
+    // ─── Real-Time Status Indicator Helpers (E02S09) ───────────────────────
+
+    // AC5: transition status indicator to "live" — pulsing green, subscription active
+    // Reads current row count from the DOM so it works regardless of call timing.
+    function setLiveState() {
+      statusDot.className = 'status-dot live';
+      // Preserve any existing numeric label (e.g. "3 jobs") and append " · Live"
+      var currentText = statusLabel.textContent || '';
+      // Strip any existing " · Live" suffix to avoid doubling
+      currentText = currentText.replace(/\s*·\s*Live$/, '');
+      if (currentText && currentText !== 'Loading…' && currentText !== 'Error' && currentText !== 'Disconnected') {
+        statusLabel.textContent = currentText + ' · Live';
+      } else {
+        // Derive from DOM row count
+        var rowCount = tbodyEl ? tbodyEl.querySelectorAll('tr').length : 0;
+        statusLabel.textContent = rowCount + (rowCount === 1 ? ' job' : ' jobs') + ' · Live';
+      }
+    }
+
+    // AC6: transition status indicator to "disconnected" — red dot, data preserved
+    function setDisconnectedState() {
+      statusDot.className     = 'status-dot error';
+      statusLabel.textContent = 'Disconnected';
+    }
+
+    // ─── Real-Time Handlers (E02S09) ───────────────────────────────────────
+
+    // AC2: INSERT — append new row to table; transition from empty/error state if needed
+    function handleInsert(newRow) {
+      if (!newRow || !newRow.id) { return; }
+
+      // If the table is not visible (empty or error state), switch to table state
+      if (tableEl.style.display === 'none') {
+        tbodyEl.innerHTML = '';
+        loadingEl.style.display = 'none';
+        tableEl.style.display   = 'block';
+        emptyEl.style.display   = 'none';
+        errorEl.style.display   = 'none';
+      }
+
+      // Do not add a duplicate row if the job is already present
+      if (tbodyEl.querySelector('tr[data-job-id="' + escapeHtml(newRow.id) + '"]')) { return; }
+
+      // Append at the bottom — oldest-first order is maintained (new jobs are newest)
+      tbodyEl.appendChild(buildJobRow(newRow));
+    }
+
+    // AC1: UPDATE — find existing row by job ID and update Status, Tech, Urgency cells in-place
+    function handleUpdate(updatedRow) {
+      if (!updatedRow || !updatedRow.id) { return; }
+
+      var tr = tbodyEl.querySelector('tr[data-job-id="' + updatedRow.id + '"]');
+      if (!tr) {
+        // Row not in DOM — treat as INSERT so dispatcher sees the update
+        handleInsert(updatedRow);
+        return;
+      }
+
+      // Update urgency row class
+      if (updatedRow.is_urgent) {
+        tr.classList.add('urgent-row');
+      } else {
+        tr.classList.remove('urgent-row');
+      }
+
+      // Update Status cell
+      var statusTd = tr.querySelector('td[data-label="Status"]');
+      if (statusTd) {
+        statusTd.innerHTML = '<span class="' + statusBadgeClass(updatedRow.status) + '">'
+          + escapeHtml(updatedRow.status || '—') + '</span>';
+      }
+
+      // Update Assigned Tech cell
+      // Real-time payloads don't include joined data — look up name from techsList by tech_id
+      var techName = (updatedRow.techs && updatedRow.techs.name) ? updatedRow.techs.name : null;
+      if (!techName && updatedRow.tech_id) {
+        for (var i = 0; i < techsList.length; i++) {
+          if (techsList[i].id === updatedRow.tech_id) { techName = techsList[i].name; break; }
+        }
+      }
+      var techTd = tr.querySelector('td[data-label="Assigned Tech"]');
+      if (techTd) {
+        techTd.innerHTML = techName
+          ? escapeHtml(techName)
+          : '<span class="cell-tech-unassigned">Unassigned</span>';
+      }
+
+      // Update Urgency cell
+      var urgencyTd = tr.querySelector('td[data-label="Urgency"]');
+      if (urgencyTd) {
+        var urgencyText  = updatedRow.is_urgent ? 'URGENT' : 'Normal';
+        var urgencyClass = updatedRow.is_urgent ? 'badge badge-urgency-urgent' : 'badge badge-urgency-normal';
+        urgencyTd.innerHTML = '<span class="' + urgencyClass + '">' + escapeHtml(urgencyText) + '</span>';
+      }
+    }
+
+    // AC3: dispatcher — receives postgres_changes event and dispatches to correct handler
+    function handleRealtimeChange(payload) {
+      var eventType = payload.eventType;
+      if (eventType === 'INSERT') {
+        handleInsert(payload.new);
+      } else if (eventType === 'UPDATE') {
+        handleUpdate(payload.new);
+      }
+      // DELETE: out of scope per story
+    }
+
+    // AC3, AC5, AC6, AC7: subscribe to jobs table real-time changes
+    // NOTE: Pre-condition — real-time must be enabled on the jobs table in Supabase Dashboard:
+    //   Database → Replication → toggle on "jobs" table. Off by default on new tables.
+    function subscribeRealtime(jobCount) {
+      // Unsubscribe any existing channel before creating a new one (e.g. on re-login)
+      if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+
+      realtimeChannel = supabaseClient
+        .channel('jobs-realtime') // named channel for easier debugging
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'jobs' },
+          handleRealtimeChange
+        )
+        .subscribe(function(status) {
+          // AC5: update status indicator based on subscription lifecycle
+          if (status === 'SUBSCRIBED') {
+            setLiveState(jobCount);
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            // AC6: graceful degradation — show disconnected, preserve last known data
+            setDisconnectedState();
+          }
+        });
+    }
+
+    // ─── Magic Link Token Generation (E03S02) ──────────────────────────────
+
+    // AC1-AC5: Generate a UUID token and PATCH techs.magic_link_token + techs.token_issued_at.
+    // Called after a successful job assignment on the dashboard path (AC4).
+    // Fire-and-forget — token PATCH failure is logged silently; it MUST NOT affect
+    // the job assignment that already succeeded (AC5).
+    function generateMagicLinkToken(techId) {
+      if (!techId) { return; }
+
+      // AC1: generate cryptographically random token using native browser API
+      var token;
+      try {
+        token = crypto.randomUUID();
+      } catch (err) {
+        // Fallback for very old browsers that don't support crypto.randomUUID()
+        // (unlikely in a real dispatcher context but defensive)
+        console.warn('[SendJob] crypto.randomUUID() unavailable — using fallback token generator');
+        token = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          var r = Math.random() * 16 | 0;
+          var v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      }
+
+      // AC2: PATCH techs table — magic_link_token + token_issued_at
+      // AC3: PATCH with ?id=eq.[techId] always overwrites any existing token for this tech
+      var endpoint = SUPABASE_URL
+        + '/rest/v1/techs?id=eq.' + encodeURIComponent(techId);
+
+      fetch(endpoint, {
+        method:  'PATCH',
+        headers: {
+          'apikey':        SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + (currentAccessToken || SUPABASE_ANON_KEY),
+          'Content-Type':  'application/json',
+          'Prefer':        'return=representation'
+        },
+        body: JSON.stringify({
+          magic_link_token: token,
+          token_issued_at:  new Date().toISOString()
+        })
+      })
+      .then(function(response) {
+        // AC5: do NOT throw here — token failure must not surface to the user
+        if (!response.ok) {
+          response.text().then(function(body) {
+            console.warn('[SendJob] Magic link token PATCH failed (non-fatal):', response.status, body || 'no detail');
+          });
+          return;
+        }
+        // Success — token written; E03S03 will use it to send tech SMS
+      })
+      .catch(function(err) {
+        // AC5: network error on token PATCH — log only; job assignment already succeeded
+        console.warn('[SendJob] Magic link token PATCH error (non-fatal):', err.message);
+      });
+    }
+
+    // ─── Assignment (E02S07) ───────────────────────────────────────────────
+
+    // AC6: Show inline error beneath the select
+    function showAssignError(selectEl, message) {
+      var td = selectEl.parentNode;
+      var existing = td.querySelector('.assign-error');
+      if (existing) {
+        existing.textContent = message;
+      } else {
+        var div = document.createElement('div');
+        div.className   = 'assign-error';
+        div.textContent = message;
+        td.appendChild(div);
+      }
+    }
+
+    // AC3: Update row in-place after a successful assignment
+    function updateRowAfterAssign(selectEl, techName, jobId) {
+      var tr = selectEl.closest ? selectEl.closest('tr') : (function() {
+        // IE fallback — walk up manually
+        var el = selectEl;
+        while (el && el.tagName !== 'TR') { el = el.parentNode; }
+        return el;
+      })();
+      if (!tr) return;
+
+      // Update status badge cell (index 5)
+      var statusTd = tr.querySelector('td[data-label="Status"]');
+      if (statusTd) {
+        statusTd.innerHTML = '<span class="badge badge-status-assigned">Assigned</span>';
+      }
+
+      // Update Assigned Tech cell
+      var techTd = tr.querySelector('td[data-label="Assigned Tech"]');
+      if (techTd) {
+        techTd.textContent = techName || jobId;
+      }
+
+      // Replace dropdown with tech name + Change button (keeps reassignment available)
+      var assignTd = tr.querySelector('td[data-label="Assign"]');
+      if (assignTd) {
+        assignTd.innerHTML = escapeHtml(techName || jobId)
+          + '<button class="reassign-btn" data-job-id="' + escapeHtml(jobId) + '">Change</button>';
+        var newBtn = assignTd.querySelector('.reassign-btn');
+        if (newBtn) {
+          newBtn.addEventListener('click', function() {
+            showReassignDropdown(this);
+          });
+        }
+      }
+    }
+
+    // AC2, AC6, AC7: PATCH the jobs table via Supabase REST
+    function assignTech(jobId, selectEl) {
+      var techId = selectEl.value;
+      if (!techId) return; // placeholder still selected
+
+      // Prevent double-submit
+      selectEl.disabled = true;
+
+      // Clear any previous error
+      var prevError = selectEl.parentNode.querySelector('.assign-error');
+      if (prevError) { prevError.parentNode.removeChild(prevError); }
+
+      var techName = '';
+      for (var i = 0; i < techsList.length; i++) {
+        if (techsList[i].id === techId) { techName = techsList[i].name; break; }
+      }
+
+      var endpoint = SUPABASE_URL + '/rest/v1/jobs?id=eq.' + encodeURIComponent(jobId);
+      var payload  = {
+        tech_id:     techId,
+        status:      'Assigned',
+        assigned_at: new Date().toISOString()
+      };
+
+      fetch(endpoint, {
+        method:  'PATCH',
+        headers: {
+          'apikey':        SUPABASE_ANON_KEY,
+          // AC8: use authenticated user JWT when available so RLS authenticated policies apply
+          'Authorization': 'Bearer ' + (currentAccessToken || SUPABASE_ANON_KEY),
+          'Content-Type':  'application/json',
+          'Prefer':        'return=representation'
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.text().then(function(body) {
+            throw new Error('Server returned ' + response.status + ': ' + (body || 'no detail'));
+          });
+        }
+        return response.json();
+      })
+      .then(function() {
+        // AC3: update row without reload
+        updateRowAfterAssign(selectEl, techName, jobId);
+        // E03S02: generate magic link token for the assigned tech (fire-and-forget)
+        generateMagicLinkToken(techId);
+      })
+      .catch(function(err) {
+        // AC6: show error; re-enable so dispatcher can retry
+        selectEl.disabled = false;
+        showAssignError(selectEl, 'Assignment failed — ' + (err.message || 'check connection and try again.'));
+      });
+    }
+
+    // ─── Techs fetch ───────────────────────────────────────────────────────
+    function loadTechs() {
+      if (!CLIENT_ID || CLIENT_ID === 'REPLACE_WITH_YOUR_CLIENT_UUID') {
+        // No client UUID configured — skip silently; dropdowns will show "No techs loaded"
+        return;
+      }
+      var endpoint = SUPABASE_URL
+        + '/rest/v1/techs'
+        + '?client_id=eq.' + encodeURIComponent(CLIENT_ID)
+        + '&select=id,name';
+
+      fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'apikey':        SUPABASE_ANON_KEY,
+          // AC8: use authenticated user JWT when available so RLS authenticated policies apply
+          'Authorization': 'Bearer ' + (currentAccessToken || SUPABASE_ANON_KEY),
+          'Content-Type':  'application/json'
+        }
+      })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.text().then(function(body) {
+            throw new Error('Techs fetch failed ' + response.status + ': ' + (body || 'no detail'));
+          });
+        }
+        return response.json();
+      })
+      .then(function(data) {
+        if (Array.isArray(data)) {
+          techsList = data;
+        }
+      })
+      .catch(function(err) {
+        // Non-fatal — log and degrade gracefully; dropdowns will show "No techs loaded"
+        console.warn('[SendJob] Could not load techs:', err.message);
+      });
+    }
+
+    // ─── Data fetch ────────────────────────────────────────────────────────
+    function loadJobs() {
+      showLoading();
+
+      var endpoint = SUPABASE_URL
+        + '/rest/v1/jobs'
+        + '?select=id,customer_name,service_address,service_type,is_urgent,status,created_at,techs(name)'
+        + '&order=created_at.asc';
+
+      fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'apikey':        SUPABASE_ANON_KEY,
+          // AC8: use authenticated user JWT when available so RLS authenticated policies apply
+          'Authorization': 'Bearer ' + (currentAccessToken || SUPABASE_ANON_KEY),
+          'Content-Type':  'application/json'
+        }
+      })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.text().then(function(body) {
+            throw new Error('Server returned ' + response.status + ': ' + (body || 'no detail'));
+          });
+        }
+        return response.json();
+      })
+      .then(function(data) {
+        if (!Array.isArray(data)) {
+          throw new Error('Unexpected response format from server.');
+        }
+        if (data.length === 0) {
+          showEmpty();
+        } else {
+          showTable(data);
+        }
+      })
+      .catch(function(err) {
+        showError('Unable to load jobs. ' + (err.message || 'Check your connection and try again.'));
+      });
+    }
+
+    // ─── Client name ───────────────────────────────────────────────────────
+    function loadClientName(session) {
+      var clientId = session && session.user && session.user.user_metadata && session.user.user_metadata.client_id;
+      if (!clientId) { return; }
+      fetch(SUPABASE_URL + '/rest/v1/clients?select=business_name&id=eq.' + clientId + '&limit=1', {
+        headers: {
+          'apikey':        SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + (currentAccessToken || SUPABASE_ANON_KEY)
+        }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (Array.isArray(data) && data[0] && data[0].business_name) {
+          var nameEl = document.getElementById('nav-client-name');
+          var sepEl  = document.getElementById('nav-client-sep');
+          if (nameEl) { nameEl.textContent = data[0].business_name; }
+          if (sepEl)  { sepEl.style.display = 'inline'; }
+        }
+      })
+      .catch(function() {}); // non-fatal
+    }
+
+    // ─── Auth: View transitions (E02S08) ───────────────────────────────────
+
+    // Show the authenticated app view (AC3, AC7)
+    function showAppView(session) {
+      currentAccessToken = session ? session.access_token : null;
+      document.getElementById('login-view').style.display  = 'none';
+      document.getElementById('app-view').style.display    = 'block';
+      document.getElementById('logout-btn').style.display  = 'block';
+      loadClientName(session);
+      loadTechs();
+      loadJobs();
+      // E02S09: AC3, AC7 — subscribe after auth session is established.
+      // Pass current row count as undefined; setLiveState will read it dynamically.
+      // subscribeRealtime uses the same supabaseClient that holds the auth session (AC7).
+      subscribeRealtime();
+    }
+
+    // Show the login form (AC1, AC6)
+    function showLoginView() {
+      document.getElementById('login-view').style.display  = 'flex';
+      document.getElementById('app-view').style.display    = 'none';
+      document.getElementById('logout-btn').style.display  = 'none';
+      var nameEl = document.getElementById('nav-client-name');
+      var sepEl  = document.getElementById('nav-client-sep');
+      if (nameEl) { nameEl.textContent = ''; }
+      if (sepEl)  { sepEl.style.display = 'none'; }
+      // Hide status indicator — no data is loaded
+      statusDot.className     = 'status-dot';
+      statusLabel.textContent = '';
+    }
+
+    // ─── Auth: Login form submit (E02S08) ──────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function() {
+      var loginForm  = document.getElementById('login-form');
+      var loginError = document.getElementById('login-error');
+      var logoutBtn  = document.getElementById('logout-btn');
+
+      // Keep currentAccessToken fresh — Supabase silently refreshes JWTs in the background
+      supabaseClient.auth.onAuthStateChange(function(event, session) {
+        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+          currentAccessToken = session ? session.access_token : null;
+        }
+      });
+
+      // AC5: On page load, restore session from localStorage if it exists
+      supabaseClient.auth.getSession().then(function(result) {
+        if (result.data && result.data.session) {
+          showAppView(result.data.session);
+        } else {
+          showLoginView();
+        }
+      });
+
+      // AC2, AC3, AC4: Handle login form submission
+      loginForm.addEventListener('submit', function(submitEvent) {
+        submitEvent.preventDefault();
+        var emailValue    = document.getElementById('login-email').value;
+        var passwordValue = document.getElementById('login-password').value;
+
+        loginError.style.display = 'none';
+        loginError.textContent   = '';
+
+        supabaseClient.auth.signInWithPassword({
+          email:    emailValue,
+          password: passwordValue
+        }).then(function(result) {
+          if (result.error) {
+            // AC4: show error message; do NOT clear the email field
+            loginError.textContent   = 'Invalid email or password.';
+            loginError.style.display = 'block';
+          } else {
+            // AC3: successful login — show job queue
+            showAppView(result.data.session);
+          }
+        });
+      });
+
+      // AC6: Logout handler (E02S09: unsubscribe real-time channel on logout)
+      logoutBtn.addEventListener('click', function() {
+        // E02S09: clean up real-time subscription before signing out
+        if (realtimeChannel) {
+          supabaseClient.removeChannel(realtimeChannel);
+          realtimeChannel = null;
+        }
+        supabaseClient.auth.signOut().then(function() {
+          currentAccessToken = null;
+          showLoginView();
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>
